@@ -12,6 +12,7 @@ const (
 	AnimVictory   // Success
 	AnimHurt      // Error
 	AnimThinking  // Processing
+	AnimWalk      // Walking
 )
 
 func (a AnimationType) String() string {
@@ -24,6 +25,7 @@ func (a AnimationType) String() string {
 		"Victory",
 		"Hurt",
 		"Thinking",
+		"Walk",
 	}
 	if int(a) < len(names) {
 		return names[a]
@@ -44,6 +46,7 @@ type AnimationSystem struct {
 	state         *AnimationState
 	frameDuration float32 // Seconds per frame
 	animLengths   map[AnimationType]int
+	walkMode      bool // When true, default to walk instead of idle
 }
 
 // NewAnimationSystem creates a new animation system
@@ -65,6 +68,7 @@ func NewAnimationSystem() *AnimationSystem {
 			AnimVictory:  20,
 			AnimHurt:     16,
 			AnimThinking: 12,
+			AnimWalk:     16,
 		},
 	}
 }
@@ -90,6 +94,27 @@ func (a *AnimationSystem) HandleEvent(event Event) {
 		newAnim = AnimThinking
 	case EventIdle:
 		newAnim = AnimIdle
+
+	// New event types
+	case EventQuest:
+		// Quest received - no animation change, just display quest text
+		return
+	case EventCompact:
+		// Conversation compacted - go to idle (rest/sleep)
+		newAnim = AnimIdle
+	case EventThinkHard:
+		// Extended thinking - use thinking animation (effects handled by renderer)
+		newAnim = AnimThinking
+	case EventSpawnAgent:
+		// Agent spawned - use casting animation (summoning)
+		newAnim = AnimCasting
+	case EventTodoUpdate:
+		// Todo update - use writing animation briefly
+		newAnim = AnimWriting
+	case EventAskUser:
+		// Asking user - use thinking animation
+		newAnim = AnimThinking
+
 	default:
 		return
 	}
@@ -136,7 +161,25 @@ func (a *AnimationSystem) onAnimationComplete() {
 		a.state.Queue = a.state.Queue[1:]
 		a.state.Frame = 0
 	} else {
-		// Return to idle
+		// Return to walk or idle based on mode
+		if a.walkMode {
+			a.state.CurrentAnim = AnimWalk
+		} else {
+			a.state.CurrentAnim = AnimIdle
+		}
+		a.state.Frame = 0
+	}
+}
+
+// SetWalkMode enables/disables walk mode
+func (a *AnimationSystem) SetWalkMode(enabled bool) {
+	a.walkMode = enabled
+	if enabled && a.state.CurrentAnim == AnimIdle {
+		// Switch to walk immediately
+		a.state.CurrentAnim = AnimWalk
+		a.state.Frame = 0
+	} else if !enabled && a.state.CurrentAnim == AnimWalk {
+		// Switch back to idle
 		a.state.CurrentAnim = AnimIdle
 		a.state.Frame = 0
 	}

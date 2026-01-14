@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -56,6 +57,14 @@ type Renderer struct {
 
 	// UI state
 	activeRow int // 0 = HAT, 1 = FACE
+
+	// Parallax scrolling
+	scrollOffset float32
+	walkMode     bool
+
+	// Biome system
+	currentBiome int
+	biomeTimer   float32
 }
 
 // NewRenderer creates a new renderer with loaded assets
@@ -159,24 +168,48 @@ func (r *Renderer) GetCurrentFaceName() string {
 	return r.faceNames[r.currentFace]
 }
 
-// SwitchRow switches between HAT (0) and FACE (1) rows
+// SwitchRow switches between HAT (0), FACE (1), and BIOME (2) rows
 func (r *Renderer) SwitchRow(direction int) {
 	r.activeRow += direction
 	if r.activeRow < 0 {
-		r.activeRow = 1
-	} else if r.activeRow > 1 {
+		r.activeRow = 2
+	} else if r.activeRow > 2 {
 		r.activeRow = 0
 	}
 }
 
 // CycleActive cycles the currently active row's accessory
 func (r *Renderer) CycleActive(direction int) {
-	if r.activeRow == 0 {
+	switch r.activeRow {
+	case 0:
 		r.CycleHat(direction)
-	} else {
+	case 1:
 		r.CycleFace(direction)
+	case 2:
+		r.ToggleWalkMode()
 	}
 	r.SavePrefs()
+}
+
+// Walk mode names for the picker (funny names)
+var modeNames = []string{"Vibin", "Quest!"}
+
+// ToggleWalkMode toggles between idle and walk mode
+func (r *Renderer) ToggleWalkMode() {
+	r.walkMode = !r.walkMode
+}
+
+// IsWalkMode returns whether walk mode is active
+func (r *Renderer) IsWalkMode() bool {
+	return r.walkMode
+}
+
+// GetCurrentModeName returns a fun name for the current mode
+func (r *Renderer) GetCurrentModeName() string {
+	if r.walkMode {
+		return modeNames[1] // "Quest!"
+	}
+	return modeNames[0] // "Vibin"
 }
 
 // SavePrefs saves current accessory choices to disk
@@ -242,65 +275,1094 @@ func (r *Renderer) Draw(state *AnimationState) {
 	}
 }
 
+// SetWalkMode enables/disables the infinite walking parallax mode
+func (r *Renderer) SetWalkMode(enabled bool) {
+	r.walkMode = enabled
+}
+
+// UpdateScroll advances the parallax scroll (call each frame)
+func (r *Renderer) UpdateScroll(dt float32) {
+	if r.walkMode {
+		r.scrollOffset += dt * 25 // Walk speed (slightly slower for atmosphere)
+		// Wrap around to prevent overflow
+		if r.scrollOffset > 10000 {
+			r.scrollOffset -= 10000
+		}
+
+		// Biome transitions every ~20 seconds of walking
+		r.biomeTimer += dt
+		if r.biomeTimer > 20 {
+			r.biomeTimer = 0
+			r.currentBiome = (r.currentBiome + 1) % 4
+		}
+	}
+}
+
 func (r *Renderer) drawBackground() {
-	// Draw a wizard's study background
+	if r.walkMode {
+		r.drawParallaxBackground()
+	} else {
+		r.drawStudyBackground()
+	}
+}
 
-	// Back wall
-	rl.DrawRectangle(0, 0, screenWidth, 160, rl.Color{R: 35, G: 30, B: 45, A: 255})
+// drawParallaxBackground renders the infinite scrolling landscape with biomes
+func (r *Renderer) drawParallaxBackground() {
+	switch r.currentBiome {
+	case 0:
+		r.drawBiomeEnchantedForest()
+	case 1:
+		r.drawBiomeMountainJourney()
+	case 2:
+		r.drawBiomeMidnightQuest()
+	case 3:
+		r.drawBiomeKingdomRoad()
+	}
+}
 
-	// Floor
-	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 60, G: 50, B: 70, A: 255})
+// ============================================================================
+// BIOME 0: ENCHANTED FOREST - Magical trees, fireflies, mushrooms
+// ============================================================================
+func (r *Renderer) drawBiomeEnchantedForest() {
+	scroll := r.scrollOffset
+	time := r.biomeTimer
 
-	// Floor boards
-	for i := int32(0); i < screenWidth; i += 40 {
-		rl.DrawLine(i, 160, i+20, 200, rl.Color{R: 50, G: 42, B: 60, A: 255})
+	// Sky gradient - mystical purple-green
+	for y := int32(0); y < 100; y++ {
+		t := float32(y) / 100.0
+		c := rl.Color{
+			R: uint8(15 + t*20),
+			G: uint8(25 + t*30),
+			B: uint8(35 + t*25),
+			A: 255,
+		}
+		rl.DrawLine(0, y, screenWidth, y, c)
 	}
 
-	// Bookshelf left
-	rl.DrawRectangle(5, 40, 50, 120, rl.Color{R: 80, G: 55, B: 45, A: 255})
-	rl.DrawRectangle(8, 45, 44, 25, rl.Color{R: 45, G: 35, B: 50, A: 255})
-	rl.DrawRectangle(8, 75, 44, 25, rl.Color{R: 45, G: 35, B: 50, A: 255})
-	rl.DrawRectangle(8, 105, 44, 25, rl.Color{R: 45, G: 35, B: 50, A: 255})
-	// Books
-	colors := []rl.Color{
-		{R: 180, G: 80, B: 80, A: 255},
-		{R: 80, G: 120, B: 180, A: 255},
-		{R: 80, G: 160, B: 100, A: 255},
-		{R: 200, G: 180, B: 100, A: 255},
+	// Twinkling stars with glow
+	starScroll := int32(scroll * 0.02)
+	stars := []struct{ x, y int32 }{
+		{40, 15}, {90, 25}, {150, 12}, {210, 30}, {270, 18}, {310, 35},
 	}
-	for row := 0; row < 3; row++ {
-		for book := 0; book < 6; book++ {
-			bx := int32(10 + book*7)
-			by := int32(48 + row*30)
-			bh := int32(18 + (book*3)%8)
-			rl.DrawRectangle(bx, by+(22-bh), 5, bh, colors[(book+row)%4])
+	for i, star := range stars {
+		sx := (star.x - starScroll + screenWidth) % screenWidth
+		// Twinkle effect
+		twinkle := uint8(180 + 75*simpleSinF(float64(time*3+float32(i))))
+		rl.DrawPixel(sx, star.y, rl.Color{R: twinkle, G: twinkle, B: uint8(float32(twinkle) * 0.8), A: 255})
+	}
+
+	// Distant misty trees (very slow, faded)
+	distantScroll := int32(scroll * 0.1)
+	mistColor := rl.Color{R: 30, G: 45, B: 50, A: 255}
+	for base := int32(-100); base < screenWidth+100; base += 100 {
+		x := base - distantScroll%100
+		r.drawMagicTree(x+30, 105, 35, mistColor, false)
+		r.drawMagicTree(x+70, 100, 40, mistColor, false)
+	}
+
+	// Fog layer 1
+	fogAlpha := uint8(40 + 20*simpleSinF(float64(time*0.5)))
+	rl.DrawRectangle(0, 85, screenWidth, 25, rl.Color{R: 60, G: 80, B: 70, A: fogAlpha})
+
+	// Mid trees (medium parallax)
+	midScroll := int32(scroll * 0.4)
+	midColor := rl.Color{R: 25, G: 55, B: 40, A: 255}
+	midColor2 := rl.Color{R: 20, G: 45, B: 35, A: 255}
+	for base := int32(-120); base < screenWidth+120; base += 120 {
+		x := base - midScroll%120
+		r.drawMagicTree(x+20, 135, 45, midColor, false)
+		r.drawMagicTree(x+80, 130, 50, midColor2, true) // Glowing tree
+	}
+
+	// Fog layer 2
+	rl.DrawRectangle(0, 120, screenWidth, 20, rl.Color{R: 50, G: 70, B: 60, A: 30})
+
+	// Foreground trees with details
+	fgScroll := int32(scroll * 0.8)
+	fgColor := rl.Color{R: 20, G: 50, B: 35, A: 255}
+	for base := int32(-150); base < screenWidth+150; base += 150 {
+		x := base - fgScroll%150
+		r.drawMagicTree(x+40, 158, 25, fgColor, false)
+		r.drawMagicTree(x+110, 155, 30, fgColor, true)
+		// Mushrooms at tree bases
+		r.drawMushroom(x+35, 162, rl.Color{R: 200, G: 80, B: 80, A: 255})
+		r.drawMushroom(x+120, 160, rl.Color{R: 80, G: 150, B: 200, A: 255})
+	}
+
+	// Ground - mossy forest floor
+	groundScroll := int32(scroll * 1.0)
+	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 25, G: 45, B: 30, A: 255})
+
+	// Grass and ferns
+	for base := int32(-60); base < screenWidth+60; base += 60 {
+		gx := base - groundScroll%60
+		r.drawFern(gx+10, 162, time)
+		r.drawFern(gx+40, 164, time+1)
+		r.drawGrass(gx+25, 163)
+		r.drawGrass(gx+55, 161)
+	}
+
+	// Path - dirt trail
+	rl.DrawRectangle(0, 168, screenWidth, 18, rl.Color{R: 50, G: 40, B: 30, A: 255})
+	for base := int32(-50); base < screenWidth+50; base += 50 {
+		px := base - groundScroll%50
+		// Pebbles
+		rl.DrawPixel(px+15, 175, rl.Color{R: 70, G: 60, B: 50, A: 255})
+		rl.DrawPixel(px+30, 178, rl.Color{R: 65, G: 55, B: 45, A: 255})
+		rl.DrawPixel(px+45, 173, rl.Color{R: 75, G: 65, B: 55, A: 255})
+	}
+
+	// Fireflies! (floating particles)
+	r.drawFireflies(scroll, time)
+}
+
+// ============================================================================
+// BIOME 1: MOUNTAIN JOURNEY - Epic peaks, waterfalls, ancient ruins
+// ============================================================================
+func (r *Renderer) drawBiomeMountainJourney() {
+	scroll := r.scrollOffset
+	time := r.biomeTimer
+
+	// Sky gradient - cold blue to warm horizon
+	for y := int32(0); y < 100; y++ {
+		t := float32(y) / 100.0
+		c := rl.Color{
+			R: uint8(40 + t*60),
+			G: uint8(50 + t*50),
+			B: uint8(80 + t*30),
+			A: 255,
+		}
+		rl.DrawLine(0, y, screenWidth, y, c)
+	}
+
+	// Sun glow on horizon
+	sunX := int32(200) - int32(scroll*0.01)%screenWidth
+	for i := int32(0); i < 20; i++ {
+		alpha := uint8(60 - i*3)
+		rl.DrawCircle(sunX, 95, float32(i+5), rl.Color{R: 255, G: 200, B: 150, A: alpha})
+	}
+
+	// Distant snow-capped mountains
+	distScroll := int32(scroll * 0.08)
+	for base := int32(-250); base < screenWidth+250; base += 250 {
+		x := base - distScroll%250
+		r.drawSnowMountain(x+50, 100, 100, 70)
+		r.drawSnowMountain(x+150, 100, 80, 55)
+		r.drawSnowMountain(x+220, 100, 60, 45)
+	}
+
+	// Mid mountains with ruins
+	midScroll := int32(scroll * 0.25)
+	for base := int32(-200); base < screenWidth+200; base += 200 {
+		x := base - midScroll%200
+		r.drawRockyMountain(x+40, 125, 70, 50)
+		r.drawRockyMountain(x+130, 120, 90, 60)
+		// Ancient ruins on some peaks
+		if base%400 == 0 {
+			r.drawRuins(x+130, 65)
 		}
 	}
 
-	// Desk right
-	rl.DrawRectangle(240, 100, 70, 60, rl.Color{R: 90, G: 60, B: 50, A: 255})
-	rl.DrawRectangle(242, 95, 66, 8, rl.Color{R: 100, G: 70, B: 55, A: 255})
-	// Scroll on desk
-	rl.DrawRectangle(250, 98, 30, 5, rl.Color{R: 230, G: 220, B: 190, A: 255})
+	// Waterfall (on certain sections)
+	waterfallX := int32(160) - midScroll%400
+	if waterfallX > -30 && waterfallX < screenWidth+30 {
+		r.drawWaterfall(waterfallX, 70, 60, time)
+	}
 
+	// Rocky hills
+	hillScroll := int32(scroll * 0.5)
+	for base := int32(-150); base < screenWidth+150; base += 150 {
+		x := base - hillScroll%150
+		r.drawRockyHill(x+30, 145, 50, 30)
+		r.drawRockyHill(x+100, 140, 60, 35)
+	}
+
+	// Ground - rocky terrain
+	groundScroll := int32(scroll * 1.0)
+	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 60, G: 55, B: 50, A: 255})
+
+	// Rocks and boulders
+	for base := int32(-80); base < screenWidth+80; base += 80 {
+		gx := base - groundScroll%80
+		r.drawBoulder(gx+20, 165, 8)
+		r.drawBoulder(gx+60, 168, 5)
+		// Small plants
+		r.drawAlpinePlant(gx+40, 163)
+	}
+
+	// Mountain path - stone
+	rl.DrawRectangle(0, 170, screenWidth, 16, rl.Color{R: 75, G: 70, B: 65, A: 255})
+	for base := int32(-40); base < screenWidth+40; base += 40 {
+		px := base - groundScroll%40
+		rl.DrawRectangle(px+5, 172, 12, 8, rl.Color{R: 85, G: 80, B: 75, A: 255})
+		rl.DrawRectangle(px+22, 174, 10, 6, rl.Color{R: 70, G: 65, B: 60, A: 255})
+	}
+}
+
+// ============================================================================
+// BIOME 2: MIDNIGHT QUEST - Starry sky, glowing crystals, mysterious fog
+// ============================================================================
+func (r *Renderer) drawBiomeMidnightQuest() {
+	scroll := r.scrollOffset
+	time := r.biomeTimer
+
+	// Deep night sky
+	for y := int32(0); y < 100; y++ {
+		t := float32(y) / 100.0
+		c := rl.Color{
+			R: uint8(10 + t*15),
+			G: uint8(10 + t*20),
+			B: uint8(25 + t*25),
+			A: 255,
+		}
+		rl.DrawLine(0, y, screenWidth, y, c)
+	}
+
+	// Many twinkling stars
+	starScroll := int32(scroll * 0.02)
+	for i := 0; i < 30; i++ {
+		sx := int32((i*47+13)%screenWidth) - starScroll%screenWidth
+		if sx < 0 {
+			sx += screenWidth
+		}
+		sy := int32((i*31+7) % 70)
+		twinkle := uint8(150 + 105*simpleSinF(float64(time*2+float32(i)*0.5)))
+		size := (i % 3)
+		if size == 0 {
+			rl.DrawPixel(sx, sy, rl.Color{R: twinkle, G: twinkle, B: 255, A: 255})
+		} else {
+			rl.DrawRectangle(sx, sy, int32(size), int32(size), rl.Color{R: twinkle, G: twinkle, B: 255, A: 255})
+		}
+	}
+
+	// Large moon
+	moonX := int32(80) - int32(scroll*0.01)%300
+	rl.DrawCircle(moonX, 35, 18, rl.Color{R: 220, G: 220, B: 240, A: 255})
+	rl.DrawCircle(moonX+4, 33, 15, rl.Color{R: 15, G: 15, B: 30, A: 255}) // Shadow
+
+	// Distant crystal formations
+	distScroll := int32(scroll * 0.15)
+	for base := int32(-180); base < screenWidth+180; base += 180 {
+		x := base - distScroll%180
+		r.drawCrystalFormation(x+50, 95, 25, rl.Color{R: 60, G: 40, B: 80, A: 255}, false)
+		r.drawCrystalFormation(x+130, 90, 30, rl.Color{R: 50, G: 50, B: 90, A: 255}, false)
+	}
+
+	// Mysterious fog
+	fogAlpha := uint8(50 + 30*simpleSinF(float64(time*0.3)))
+	rl.DrawRectangle(0, 80, screenWidth, 30, rl.Color{R: 40, G: 50, B: 70, A: fogAlpha})
+
+	// Mid crystal spires (some glowing!)
+	midScroll := int32(scroll * 0.4)
+	for base := int32(-140); base < screenWidth+140; base += 140 {
+		x := base - midScroll%140
+		r.drawCrystalFormation(x+30, 130, 35, rl.Color{R: 70, G: 50, B: 100, A: 255}, true) // Glowing
+		r.drawCrystalFormation(x+90, 125, 40, rl.Color{R: 60, G: 60, B: 110, A: 255}, false)
+	}
+
+	// More fog
+	rl.DrawRectangle(0, 115, screenWidth, 25, rl.Color{R: 30, G: 40, B: 60, A: 35})
+
+	// Foreground spooky trees
+	fgScroll := int32(scroll * 0.7)
+	for base := int32(-120); base < screenWidth+120; base += 120 {
+		x := base - fgScroll%120
+		r.drawSpookyTree(x+40, 158, 30)
+		r.drawSpookyTree(x+90, 155, 25)
+	}
+
+	// Ground - dark mystical
+	groundScroll := int32(scroll * 1.0)
+	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 25, G: 25, B: 35, A: 255})
+
+	// Glowing mushrooms and crystals on ground
+	for base := int32(-70); base < screenWidth+70; base += 70 {
+		gx := base - groundScroll%70
+		r.drawGlowingMushroom(gx+20, 163, time)
+		r.drawSmallCrystal(gx+50, 165, time)
+	}
+
+	// Path - ancient stones
+	rl.DrawRectangle(0, 170, screenWidth, 16, rl.Color{R: 35, G: 35, B: 45, A: 255})
+	for base := int32(-45); base < screenWidth+45; base += 45 {
+		px := base - groundScroll%45
+		rl.DrawRectangle(px+8, 173, 14, 7, rl.Color{R: 45, G: 45, B: 55, A: 255})
+	}
+
+	// Floating magic particles
+	r.drawMagicParticles(scroll, time)
+}
+
+// ============================================================================
+// BIOME 3: KINGDOM ROAD - Castle in distance, villages, farmland
+// ============================================================================
+func (r *Renderer) drawBiomeKingdomRoad() {
+	scroll := r.scrollOffset
+	time := r.biomeTimer
+
+	// Warm sunset sky
+	for y := int32(0); y < 100; y++ {
+		t := float32(y) / 100.0
+		c := rl.Color{
+			R: uint8(80 + t*80),
+			G: uint8(50 + t*60),
+			B: uint8(60 + t*40),
+			A: 255,
+		}
+		rl.DrawLine(0, y, screenWidth, y, c)
+	}
+
+	// Setting sun
+	sunX := int32(280) - int32(scroll*0.01)%400
+	rl.DrawCircle(sunX, 85, 15, rl.Color{R: 255, G: 200, B: 100, A: 255})
+	rl.DrawCircle(sunX, 85, 20, rl.Color{R: 255, G: 180, B: 80, A: 60})
+
+	// Clouds
+	cloudScroll := int32(scroll * 0.05)
+	for base := int32(-200); base < screenWidth+200; base += 200 {
+		cx := base - cloudScroll%200
+		r.drawCloud(cx+50, 25)
+		r.drawCloud(cx+150, 35)
+	}
+
+	// Distant castle!
+	castleX := int32(160) - int32(scroll*0.08)%600
+	if castleX > -100 && castleX < screenWidth+100 {
+		r.drawCastle(castleX, 60)
+	}
+
+	// Rolling hills with farms
+	hillScroll := int32(scroll * 0.2)
+	for base := int32(-200); base < screenWidth+200; base += 200 {
+		x := base - hillScroll%200
+		r.drawFarmHill(x+50, 110, 80, 40, rl.Color{R: 70, G: 90, B: 50, A: 255})
+		r.drawFarmHill(x+150, 105, 100, 50, rl.Color{R: 65, G: 85, B: 45, A: 255})
+		// Windmill on some hills
+		if base%400 == 0 {
+			r.drawWindmill(x+80, 75, time)
+		}
+	}
+
+	// Mid hills with houses
+	midScroll := int32(scroll * 0.45)
+	for base := int32(-160); base < screenWidth+160; base += 160 {
+		x := base - midScroll%160
+		r.drawFarmHill(x+30, 135, 60, 30, rl.Color{R: 55, G: 75, B: 40, A: 255})
+		r.drawFarmHill(x+100, 130, 70, 35, rl.Color{R: 60, G: 80, B: 45, A: 255})
+		// Cottages
+		r.drawCottage(x+50, 118)
+		r.drawCottage(x+120, 112)
+	}
+
+	// Foreground fences and crops
+	fgScroll := int32(scroll * 0.75)
+	for base := int32(-100); base < screenWidth+100; base += 100 {
+		x := base - fgScroll%100
+		r.drawFence(x, 158)
+		r.drawWheatField(x+30, 155, time)
+	}
+
+	// Ground - fertile farmland
+	groundScroll := int32(scroll * 1.0)
+	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 65, G: 80, B: 45, A: 255})
+
+	// Flowers and grass
+	for base := int32(-50); base < screenWidth+50; base += 50 {
+		gx := base - groundScroll%50
+		r.drawFlower(gx+10, 163, rl.Color{R: 255, G: 200, B: 100, A: 255})
+		r.drawFlower(gx+30, 165, rl.Color{R: 255, G: 150, B: 150, A: 255})
+		r.drawGrass(gx+20, 162)
+		r.drawGrass(gx+45, 164)
+	}
+
+	// Cobblestone road
+	rl.DrawRectangle(0, 168, screenWidth, 18, rl.Color{R: 90, G: 80, B: 70, A: 255})
+	for base := int32(-30); base < screenWidth+30; base += 30 {
+		px := base - groundScroll%30
+		rl.DrawRectangle(px+3, 170, 8, 6, rl.Color{R: 100, G: 90, B: 80, A: 255})
+		rl.DrawRectangle(px+14, 172, 10, 7, rl.Color{R: 80, G: 70, B: 60, A: 255})
+		rl.DrawRectangle(px+8, 178, 7, 5, rl.Color{R: 95, G: 85, B: 75, A: 255})
+	}
+}
+
+// ============================================================================
+// DRAWING HELPERS FOR ALL BIOMES
+// ============================================================================
+
+// --- ENCHANTED FOREST ELEMENTS ---
+
+func (r *Renderer) drawMagicTree(x, baseY, height int32, color rl.Color, glowing bool) {
+	// Trunk
+	trunkW := height / 8
+	if trunkW < 2 {
+		trunkW = 2
+	}
+	trunkH := height / 3
+	trunkColor := rl.Color{R: 45, G: 35, B: 30, A: 255}
+	rl.DrawRectangle(x-trunkW/2, baseY-trunkH, trunkW, trunkH, trunkColor)
+
+	// Foliage - layered circles for organic look
+	foliageY := baseY - trunkH
+	layers := height * 2 / 3 / 8
+	if layers < 2 {
+		layers = 2
+	}
+	for i := int32(0); i < layers; i++ {
+		layerY := foliageY - i*6
+		layerW := height/2 - i*3
+		if layerW < 4 {
+			layerW = 4
+		}
+		layerColor := color
+		if i > 0 {
+			layerColor.R = uint8(min(255, int(color.R)+int(i)*5))
+			layerColor.G = uint8(min(255, int(color.G)+int(i)*8))
+		}
+		// Draw as overlapping ovals
+		for dy := int32(0); dy < 6; dy++ {
+			w := layerW * (6 - dy) / 6
+			rl.DrawRectangle(x-w/2, layerY-dy, w, 1, layerColor)
+		}
+	}
+
+	// Glow effect
+	if glowing {
+		glowColor := rl.Color{R: 100, G: 255, B: 150, A: 40}
+		rl.DrawCircle(x, foliageY-height/4, float32(height/3), glowColor)
+	}
+}
+
+func (r *Renderer) drawMushroom(x, y int32, capColor rl.Color) {
+	// Stem
+	rl.DrawRectangle(x, y-3, 2, 4, rl.Color{R: 220, G: 210, B: 190, A: 255})
+	// Cap
+	rl.DrawRectangle(x-2, y-5, 6, 3, capColor)
+	// Spots
+	rl.DrawPixel(x-1, y-4, rl.Color{R: 255, G: 255, B: 255, A: 255})
+	rl.DrawPixel(x+2, y-4, rl.Color{R: 255, G: 255, B: 255, A: 255})
+}
+
+func (r *Renderer) drawFern(x, y int32, time float32) {
+	sway := int32(simpleSinF(float64(time*2+float32(x)*0.1)) * 1)
+	fernColor := rl.Color{R: 40, G: 90, B: 50, A: 255}
+	// Fronds
+	rl.DrawPixel(x+sway, y-3, fernColor)
+	rl.DrawPixel(x-1+sway, y-2, fernColor)
+	rl.DrawPixel(x+1+sway, y-2, fernColor)
+	rl.DrawPixel(x+sway, y-1, fernColor)
+	rl.DrawPixel(x-2+sway, y-1, fernColor)
+	rl.DrawPixel(x+2+sway, y-1, fernColor)
+}
+
+func (r *Renderer) drawFireflies(scroll float32, time float32) {
+	for i := 0; i < 8; i++ {
+		// Pseudo-random but deterministic positions
+		baseX := float64((i*73 + 17) % screenWidth)
+		baseY := float64(100 + (i*31)%60)
+		// Float around
+		fx := baseX + 10*simpleSinF(float64(time)*0.8+float64(i)*1.5)
+		fy := baseY + 5*simpleSinF(float64(time)*1.2+float64(i)*0.7)
+		// Pulse glow
+		alpha := uint8(150 + 105*simpleSinF(float64(time)*3+float64(i)*2))
+		// Draw with glow
+		rl.DrawPixel(int32(fx), int32(fy), rl.Color{R: 200, G: 255, B: 150, A: alpha})
+		rl.DrawPixel(int32(fx)+1, int32(fy), rl.Color{R: 200, G: 255, B: 150, A: alpha / 2})
+		rl.DrawPixel(int32(fx), int32(fy)+1, rl.Color{R: 200, G: 255, B: 150, A: alpha / 2})
+	}
+}
+
+// --- MOUNTAIN JOURNEY ELEMENTS ---
+
+func (r *Renderer) drawSnowMountain(x, baseY, width, height int32) {
+	// Rock base
+	rockColor := rl.Color{R: 60, G: 55, B: 70, A: 255}
+	snowLine := height * 2 / 3
+	for row := int32(0); row < height; row++ {
+		w := width * (height - row) / height
+		color := rockColor
+		if row > snowLine {
+			// Snow cap
+			color = rl.Color{R: 240, G: 245, B: 255, A: 255}
+		} else if row > snowLine-5 {
+			// Snow transition
+			color = rl.Color{R: 180, G: 190, B: 210, A: 255}
+		}
+		rl.DrawRectangle(x-w/2, baseY-row, w, 1, color)
+	}
+}
+
+func (r *Renderer) drawRockyMountain(x, baseY, width, height int32) {
+	baseColor := rl.Color{R: 70, G: 65, B: 60, A: 255}
+	for row := int32(0); row < height; row++ {
+		w := width * (height - row) / height
+		// Add some texture variation
+		c := baseColor
+		if (row+x)%7 == 0 {
+			c.R += 10
+			c.G += 10
+			c.B += 10
+		}
+		rl.DrawRectangle(x-w/2, baseY-row, w, 1, c)
+	}
+}
+
+func (r *Renderer) drawRuins(x, y int32) {
+	stoneColor := rl.Color{R: 100, G: 95, B: 90, A: 255}
+	// Broken pillars
+	rl.DrawRectangle(x, y, 4, 15, stoneColor)
+	rl.DrawRectangle(x+12, y+5, 3, 10, stoneColor)
+	// Archway remains
+	rl.DrawRectangle(x+3, y-2, 10, 2, stoneColor)
+}
+
+func (r *Renderer) drawWaterfall(x, y, height int32, time float32) {
+	// Water stream
+	for row := int32(0); row < height; row++ {
+		// Animated water
+		offset := int32(time*10+float32(row)*0.5) % 3
+		alpha := uint8(150 + (row%3)*30)
+		rl.DrawRectangle(x+offset, y+row, 3, 2, rl.Color{R: 150, G: 200, B: 255, A: alpha})
+	}
+	// Splash at bottom
+	splashY := y + height
+	rl.DrawPixel(x-2, splashY, rl.Color{R: 200, G: 230, B: 255, A: 150})
+	rl.DrawPixel(x+5, splashY, rl.Color{R: 200, G: 230, B: 255, A: 150})
+}
+
+func (r *Renderer) drawRockyHill(x, baseY, width, height int32) {
+	color := rl.Color{R: 65, G: 60, B: 55, A: 255}
+	for row := int32(0); row < height; row++ {
+		t := float32(row) / float32(height)
+		w := int32(float32(width) * (1 - t*t))
+		rl.DrawRectangle(x-w/2, baseY-row, w, 1, color)
+	}
+}
+
+func (r *Renderer) drawBoulder(x, y, size int32) {
+	color := rl.Color{R: 80, G: 75, B: 70, A: 255}
+	highlight := rl.Color{R: 100, G: 95, B: 90, A: 255}
+	rl.DrawRectangle(x, y, size, size-1, color)
+	rl.DrawRectangle(x, y, size-1, 1, highlight)
+}
+
+func (r *Renderer) drawAlpinePlant(x, y int32) {
+	color := rl.Color{R: 60, G: 100, B: 60, A: 255}
+	rl.DrawPixel(x, y-2, color)
+	rl.DrawPixel(x-1, y-1, color)
+	rl.DrawPixel(x+1, y-1, color)
+	rl.DrawPixel(x, y, color)
+}
+
+// --- MIDNIGHT QUEST ELEMENTS ---
+
+func (r *Renderer) drawCrystalFormation(x, baseY, height int32, color rl.Color, glowing bool) {
+	// Main crystal
+	for row := int32(0); row < height; row++ {
+		w := (height - row) / 4
+		if w < 1 {
+			w = 1
+		}
+		c := color
+		// Lighter at top
+		c.R = uint8(min(255, int(color.R)+int(row)))
+		c.G = uint8(min(255, int(color.G)+int(row)))
+		c.B = uint8(min(255, int(color.B)+int(row)*2))
+		rl.DrawRectangle(x-w/2, baseY-row, w, 1, c)
+	}
+	// Side crystals
+	sideH := height * 2 / 3
+	for row := int32(0); row < sideH; row++ {
+		w := (sideH - row) / 5
+		if w < 1 {
+			w = 1
+		}
+		rl.DrawRectangle(x-height/4-w/2, baseY-row, w, 1, color)
+		rl.DrawRectangle(x+height/4-w/2, baseY-row, w, 1, color)
+	}
+	if glowing {
+		glowColor := rl.Color{R: 150, G: 100, B: 255, A: 50}
+		rl.DrawCircle(x, baseY-height/2, float32(height/2), glowColor)
+	}
+}
+
+func (r *Renderer) drawSpookyTree(x, baseY, height int32) {
+	// Gnarled trunk
+	trunkColor := rl.Color{R: 30, G: 25, B: 35, A: 255}
+	rl.DrawRectangle(x-2, baseY-height/2, 4, height/2, trunkColor)
+	// Twisted branches (no leaves)
+	rl.DrawLine(x, baseY-height/2, x-8, baseY-height/2-10, trunkColor)
+	rl.DrawLine(x, baseY-height/2, x+6, baseY-height/2-8, trunkColor)
+	rl.DrawLine(x-8, baseY-height/2-10, x-12, baseY-height/2-15, trunkColor)
+	rl.DrawLine(x+6, baseY-height/2-8, x+10, baseY-height/2-12, trunkColor)
+}
+
+func (r *Renderer) drawGlowingMushroom(x, y int32, time float32) {
+	pulse := uint8(150 + 100*simpleSinF(float64(time*2+float32(x)*0.1)))
+	// Stem
+	rl.DrawRectangle(x, y-2, 2, 3, rl.Color{R: 100, G: 80, B: 120, A: 255})
+	// Glowing cap
+	rl.DrawRectangle(x-1, y-4, 4, 2, rl.Color{R: pulse, G: pulse / 2, B: 255, A: 255})
+	// Glow
+	rl.DrawPixel(x, y-5, rl.Color{R: pulse, G: pulse, B: 255, A: 100})
+}
+
+func (r *Renderer) drawSmallCrystal(x, y int32, time float32) {
+	pulse := uint8(180 + 75*simpleSinF(float64(time*3+float32(x)*0.2)))
+	rl.DrawPixel(x, y-2, rl.Color{R: pulse / 2, G: pulse, B: 255, A: 255})
+	rl.DrawPixel(x, y-1, rl.Color{R: pulse / 2, G: pulse, B: 255, A: 255})
+	rl.DrawPixel(x, y, rl.Color{R: 100, G: 100, B: 150, A: 255})
+}
+
+func (r *Renderer) drawMagicParticles(scroll float32, time float32) {
+	for i := 0; i < 12; i++ {
+		baseX := float64((i*61 + 23) % screenWidth)
+		baseY := float64(80 + (i*41)%80)
+		// Float upward and sway
+		fx := baseX + 8*simpleSinF(float64(time)+float64(i))
+		fy := baseY - float64(int(time*15+float32(i)*10)%80)
+		// Pulse
+		alpha := uint8(100 + 100*simpleSinF(float64(time)*2+float64(i)*1.5))
+		hue := int(time*50+float32(i)*30) % 360
+		color := hsvToRGB(hue, 0.7, 1.0)
+		color.A = alpha
+		rl.DrawPixel(int32(fx), int32(fy), color)
+	}
+}
+
+// --- KINGDOM ROAD ELEMENTS ---
+
+func (r *Renderer) drawCloud(x, y int32) {
+	cloudColor := rl.Color{R: 255, G: 240, B: 230, A: 180}
+	rl.DrawCircle(x, y, 8, cloudColor)
+	rl.DrawCircle(x+10, y+2, 6, cloudColor)
+	rl.DrawCircle(x-8, y+2, 5, cloudColor)
+	rl.DrawCircle(x+5, y-3, 5, cloudColor)
+}
+
+func (r *Renderer) drawCastle(x, y int32) {
+	stoneColor := rl.Color{R: 90, G: 85, B: 100, A: 255}
+	roofColor := rl.Color{R: 70, G: 50, B: 60, A: 255}
+	// Main keep
+	rl.DrawRectangle(x-15, y, 30, 40, stoneColor)
+	// Towers
+	rl.DrawRectangle(x-25, y-10, 12, 50, stoneColor)
+	rl.DrawRectangle(x+13, y-10, 12, 50, stoneColor)
+	// Tower roofs (pointed)
+	for i := int32(0); i < 10; i++ {
+		w := 12 - i
+		rl.DrawRectangle(x-25+(12-w)/2, y-10-i, w, 1, roofColor)
+		rl.DrawRectangle(x+13+(12-w)/2, y-10-i, w, 1, roofColor)
+	}
+	// Windows
+	rl.DrawRectangle(x-5, y+10, 3, 5, rl.Color{R: 255, G: 220, B: 150, A: 255})
+	rl.DrawRectangle(x+2, y+10, 3, 5, rl.Color{R: 255, G: 220, B: 150, A: 255})
+	// Flag
+	rl.DrawRectangle(x, y-15, 1, 10, rl.Color{R: 60, G: 50, B: 45, A: 255})
+	rl.DrawRectangle(x+1, y-15, 6, 4, rl.Color{R: 200, G: 50, B: 50, A: 255})
+}
+
+func (r *Renderer) drawFarmHill(x, baseY, width, height int32, color rl.Color) {
+	for row := int32(0); row < height; row++ {
+		t := float32(row) / float32(height)
+		w := int32(float32(width) * (1 - t*t))
+		rl.DrawRectangle(x-w/2, baseY-row, w, 1, color)
+	}
+}
+
+func (r *Renderer) drawWindmill(x, y int32, time float32) {
+	// Tower
+	rl.DrawRectangle(x-4, y, 8, 20, rl.Color{R: 180, G: 170, B: 150, A: 255})
+	// Roof
+	for i := int32(0); i < 6; i++ {
+		rl.DrawRectangle(x-5+i/2, y-i, 10-i, 1, rl.Color{R: 120, G: 80, B: 60, A: 255})
+	}
+	// Rotating blades
+	angle := time * 2
+	for i := 0; i < 4; i++ {
+		a := angle + float32(i)*1.57
+		bx := x + int32(10*simpleCosF(float64(a)))
+		by := y - 3 + int32(10*simpleSinF(float64(a)))
+		rl.DrawLine(x, y-3, bx, by, rl.Color{R: 100, G: 80, B: 60, A: 255})
+	}
+}
+
+func (r *Renderer) drawCottage(x, y int32) {
+	// Walls
+	rl.DrawRectangle(x-6, y, 12, 10, rl.Color{R: 180, G: 160, B: 140, A: 255})
+	// Roof
+	for i := int32(0); i < 6; i++ {
+		rl.DrawRectangle(x-8+i, y-i, 16-i*2, 1, rl.Color{R: 140, G: 90, B: 70, A: 255})
+	}
+	// Door
+	rl.DrawRectangle(x-1, y+4, 3, 6, rl.Color{R: 80, G: 60, B: 50, A: 255})
 	// Window
-	rl.DrawRectangle(130, 30, 60, 80, rl.Color{R: 25, G: 35, B: 60, A: 255})
-	rl.DrawRectangle(132, 32, 56, 76, rl.Color{R: 40, G: 50, B: 80, A: 255})
-	// Window frame
-	rl.DrawRectangle(158, 32, 4, 76, rl.Color{R: 70, G: 50, B: 45, A: 255})
-	rl.DrawRectangle(132, 68, 56, 4, rl.Color{R: 70, G: 50, B: 45, A: 255})
-	// Stars in window
-	rl.DrawPixel(140, 45, rl.Color{R: 255, G: 255, B: 200, A: 255})
-	rl.DrawPixel(175, 55, rl.Color{R: 255, G: 255, B: 200, A: 255})
-	rl.DrawPixel(150, 85, rl.Color{R: 255, G: 255, B: 200, A: 255})
-	rl.DrawPixel(170, 95, rl.Color{R: 200, G: 200, B: 255, A: 255})
+	rl.DrawRectangle(x+3, y+3, 2, 2, rl.Color{R: 255, G: 230, B: 150, A: 255})
+}
 
-	// Candle on desk
-	rl.DrawRectangle(290, 85, 6, 12, rl.Color{R: 230, G: 220, B: 180, A: 255})
-	// Flame (animated via frame count)
-	flicker := int32(rl.GetFrameTime()*1000) % 3
-	rl.DrawRectangle(291+flicker%2, 78, 4, 7, rl.Color{R: 255, G: 200, B: 100, A: 255})
-	rl.DrawRectangle(292, 80, 2, 4, rl.Color{R: 255, G: 255, B: 200, A: 255})
+func (r *Renderer) drawFence(x, y int32) {
+	fenceColor := rl.Color{R: 120, G: 100, B: 80, A: 255}
+	// Posts
+	for i := int32(0); i < 5; i++ {
+		rl.DrawRectangle(x+i*8, y-6, 2, 8, fenceColor)
+	}
+	// Rails
+	rl.DrawRectangle(x, y-5, 34, 1, fenceColor)
+	rl.DrawRectangle(x, y-2, 34, 1, fenceColor)
+}
+
+func (r *Renderer) drawWheatField(x, y int32, time float32) {
+	wheatColor := rl.Color{R: 220, G: 180, B: 80, A: 255}
+	for i := int32(0); i < 8; i++ {
+		sway := int32(simpleSinF(float64(time*2+float32(i+x)*0.3)) * 1)
+		rl.DrawRectangle(x+i*3+sway, y-4, 1, 5, wheatColor)
+		rl.DrawPixel(x+i*3+sway, y-5, rl.Color{R: 240, G: 200, B: 100, A: 255})
+	}
+}
+
+func (r *Renderer) drawFlower(x, y int32, color rl.Color) {
+	// Stem
+	rl.DrawPixel(x, y, rl.Color{R: 50, G: 100, B: 50, A: 255})
+	rl.DrawPixel(x, y-1, rl.Color{R: 50, G: 100, B: 50, A: 255})
+	// Petals
+	rl.DrawPixel(x, y-2, color)
+	rl.DrawPixel(x-1, y-2, color)
+	rl.DrawPixel(x+1, y-2, color)
+	rl.DrawPixel(x, y-3, color)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// drawMountain draws a simple triangle mountain
+func (r *Renderer) drawMountain(x, baseY, width, height int32, color rl.Color) {
+	for row := int32(0); row < height; row++ {
+		// Width at this row
+		w := width * (height - row) / height
+		startX := x - w/2
+		rl.DrawRectangle(startX, baseY-row, w, 1, color)
+	}
+}
+
+// drawHill draws a rounded hill
+func (r *Renderer) drawHill(x, baseY, width, height int32, color rl.Color) {
+	for row := int32(0); row < height; row++ {
+		// Parabolic shape
+		t := float32(row) / float32(height)
+		w := int32(float32(width) * (1 - t*t))
+		startX := x - w/2
+		rl.DrawRectangle(startX, baseY-row, w, 1, color)
+	}
+}
+
+// drawTree draws a simple pixel tree
+func (r *Renderer) drawTree(x, baseY, height int32, color rl.Color) {
+	// Trunk
+	trunkColor := rl.Color{R: 60, G: 45, B: 35, A: 255}
+	rl.DrawRectangle(x, baseY-height/3, 2, height/3, trunkColor)
+
+	// Foliage - triangle
+	for row := int32(0); row < height*2/3; row++ {
+		w := (height*2/3 - row) * 2 / 3
+		if w < 1 {
+			w = 1
+		}
+		rl.DrawRectangle(x+1-w/2, baseY-height/3-row, w, 1, color)
+	}
+}
+
+// drawGrass draws small grass tufts
+func (r *Renderer) drawGrass(x, y int32) {
+	grassColor := rl.Color{R: 50, G: 80, B: 45, A: 255}
+	rl.DrawPixel(x, y, grassColor)
+	rl.DrawPixel(x+1, y-1, grassColor)
+	rl.DrawPixel(x+2, y, grassColor)
+}
+
+// drawStudyBackground draws the original wizard's study background
+func (r *Renderer) drawStudyBackground() {
+	time := float32(rl.GetTime())
+
+	// === BACK WALL - Rich purple with subtle texture ===
+	for y := int32(0); y < 160; y++ {
+		t := float32(y) / 160.0
+		c := rl.Color{
+			R: uint8(30 + t*15),
+			G: uint8(25 + t*12),
+			B: uint8(42 + t*18),
+			A: 255,
+		}
+		rl.DrawLine(0, y, screenWidth, y, c)
+	}
+
+	// Wall texture - subtle brick pattern
+	wallBrick := rl.Color{R: 38, G: 32, B: 50, A: 80}
+	for y := int32(10); y < 150; y += 16 {
+		offset := int32(0)
+		if (y/16)%2 == 1 {
+			offset = 20
+		}
+		for x := int32(-20) + offset; x < screenWidth+20; x += 40 {
+			rl.DrawRectangle(x, y, 38, 14, wallBrick)
+		}
+	}
+
+	// === COZY RUG - Circular pattern under Claude ===
+	rugCenter := int32(screenWidth / 2)
+	rugColors := []rl.Color{
+		{R: 120, G: 45, B: 60, A: 255},
+		{R: 140, G: 55, B: 70, A: 255},
+		{R: 90, G: 35, B: 50, A: 255},
+	}
+	for i := 3; i >= 0; i-- {
+		radius := float32(45 - i*10)
+		rl.DrawEllipse(rugCenter, 175, radius, radius*0.3, rugColors[i%3])
+	}
+	// Rug fringe
+	for x := int32(rugCenter - 42); x < rugCenter+42; x += 4 {
+		rl.DrawLine(x, 182, x+1, 186, rl.Color{R: 100, G: 40, B: 55, A: 255})
+	}
+
+	// === FLOOR - Warm wooden planks ===
+	rl.DrawRectangle(0, 160, screenWidth, 40, rl.Color{R: 55, G: 42, B: 50, A: 255})
+	plankColors := []rl.Color{
+		{R: 65, G: 48, B: 55, A: 255},
+		{R: 58, G: 44, B: 52, A: 255},
+		{R: 62, G: 46, B: 54, A: 255},
+	}
+	for i := int32(0); i < 8; i++ {
+		px := i * 42
+		rl.DrawRectangle(px, 160, 40, 40, plankColors[int(i)%3])
+		rl.DrawLine(px, 160, px, 200, rl.Color{R: 45, G: 35, B: 42, A: 255})
+		// Wood grain
+		rl.DrawLine(px+10, 165, px+12, 195, rl.Color{R: 50, G: 38, B: 45, A: 100})
+		rl.DrawLine(px+25, 168, px+28, 198, rl.Color{R: 50, G: 38, B: 45, A: 100})
+	}
+
+	// === GRAND WINDOW - Arched with moon and stars ===
+	// Window frame (ornate)
+	rl.DrawRectangle(115, 15, 90, 105, rl.Color{R: 65, G: 45, B: 40, A: 255})
+	rl.DrawRectangle(118, 18, 84, 99, rl.Color{R: 75, G: 52, B: 45, A: 255})
+
+	// Night sky through window
+	for y := int32(20); y < 115; y++ {
+		t := float32(y-20) / 95.0
+		c := rl.Color{
+			R: uint8(15 + t*10),
+			G: uint8(20 + t*15),
+			B: uint8(45 + t*20),
+			A: 255,
+		}
+		rl.DrawLine(120, y, 200, y, c)
+	}
+
+	// Moon with glow
+	moonX, moonY := int32(175), int32(40)
+	// Glow layers
+	rl.DrawCircle(moonX, moonY, 18, rl.Color{R: 60, G: 60, B: 100, A: 30})
+	rl.DrawCircle(moonX, moonY, 14, rl.Color{R: 80, G: 80, B: 120, A: 40})
+	rl.DrawCircle(moonX, moonY, 10, rl.Color{R: 100, G: 100, B: 140, A: 50})
+	// Moon
+	rl.DrawCircle(moonX, moonY, 8, rl.Color{R: 240, G: 235, B: 220, A: 255})
+	rl.DrawCircle(moonX-2, moonY-1, 7, rl.Color{R: 250, G: 248, B: 235, A: 255})
+	// Craters
+	rl.DrawCircle(moonX+2, moonY+2, 2, rl.Color{R: 220, G: 215, B: 200, A: 255})
+	rl.DrawCircle(moonX-3, moonY+1, 1, rl.Color{R: 225, G: 220, B: 205, A: 255})
+
+	// Twinkling stars
+	starPositions := [][2]int32{{130, 35}, {145, 55}, {155, 30}, {138, 80}, {185, 60}, {170, 90}, {128, 100}, {190, 45}}
+	for i, pos := range starPositions {
+		twinkle := uint8(180 + 75*simpleSinF(float64(time)*2.0+float64(i)*0.8))
+		rl.DrawPixel(pos[0], pos[1], rl.Color{R: twinkle, G: twinkle, B: 255, A: 255})
+		if i%3 == 0 {
+			rl.DrawPixel(pos[0]+1, pos[1], rl.Color{R: twinkle / 2, G: twinkle / 2, B: 200, A: 150})
+		}
+	}
+
+	// Window dividers
+	rl.DrawRectangle(158, 20, 4, 95, rl.Color{R: 60, G: 42, B: 38, A: 255})
+	rl.DrawRectangle(120, 60, 80, 4, rl.Color{R: 60, G: 42, B: 38, A: 255})
+
+	// Curtains with gentle sway
+	curtainSway := int32(2 * simpleSinF(float64(time)*0.8))
+	// Left curtain
+	for y := int32(12); y < 120; y++ {
+		wave := int32(simpleSinF(float64(y)*0.1+float64(time)*0.5) * 2)
+		rl.DrawLine(105+wave+curtainSway, y, 118+wave+curtainSway, y, rl.Color{R: 100, G: 40, B: 50, A: 255})
+	}
+	// Right curtain
+	for y := int32(12); y < 120; y++ {
+		wave := int32(simpleSinF(float64(y)*0.1+float64(time)*0.5+1) * 2)
+		rl.DrawLine(202-wave-curtainSway, y, 215-wave-curtainSway, y, rl.Color{R: 100, G: 40, B: 50, A: 255})
+	}
+
+	// === TALL BOOKSHELF LEFT ===
+	// Frame
+	rl.DrawRectangle(2, 25, 55, 135, rl.Color{R: 70, G: 48, B: 40, A: 255})
+	rl.DrawRectangle(5, 28, 49, 129, rl.Color{R: 60, G: 42, B: 35, A: 255})
+
+	// Shelf dividers
+	for y := int32(28); y < 155; y += 32 {
+		rl.DrawRectangle(5, y, 49, 3, rl.Color{R: 75, G: 52, B: 42, A: 255})
+	}
+
+	// Books with varied sizes and colors
+	bookColors := []rl.Color{
+		{R: 160, G: 60, B: 70, A: 255},   // Red
+		{R: 70, G: 100, B: 160, A: 255},  // Blue
+		{R: 70, G: 140, B: 90, A: 255},   // Green
+		{R: 180, G: 160, B: 80, A: 255},  // Gold
+		{R: 140, G: 80, B: 140, A: 255},  // Purple
+		{R: 80, G: 70, B: 60, A: 255},    // Brown
+		{R: 200, G: 100, B: 60, A: 255},  // Orange
+	}
+	for shelf := 0; shelf < 4; shelf++ {
+		shelfY := int32(31 + shelf*32)
+		bx := int32(7)
+		for book := 0; book < 7; book++ {
+			bw := int32(5 + (book*shelf)%3)
+			bh := int32(22 + (book*3+shelf*2)%8)
+			bc := bookColors[(book+shelf*2)%len(bookColors)]
+			// Book body
+			rl.DrawRectangle(bx, shelfY+28-bh, bw, bh, bc)
+			// Spine detail
+			rl.DrawLine(bx+bw/2, shelfY+30-bh, bx+bw/2, shelfY+26, rl.Color{R: bc.R - 30, G: bc.G - 30, B: bc.B - 30, A: 255})
+			bx += bw + 1
+			if bx > 50 {
+				break
+			}
+		}
+	}
+
+	// Glowing orb on shelf
+	orbY := int32(45)
+	orbGlow := uint8(150 + 50*simpleSinF(float64(time)*1.5))
+	rl.DrawCircle(35, orbY, 6, rl.Color{R: 100, G: orbGlow, B: 200, A: 80})
+	rl.DrawCircle(35, orbY, 4, rl.Color{R: 150, G: orbGlow, B: 230, A: 150})
+	rl.DrawCircle(35, orbY, 2, rl.Color{R: 200, G: 220, B: 255, A: 255})
+
+	// === DESK WITH ITEMS - Right side ===
+	// Desk body
+	rl.DrawRectangle(235, 95, 80, 65, rl.Color{R: 75, G: 52, B: 42, A: 255})
+	// Desk top
+	rl.DrawRectangle(232, 90, 86, 8, rl.Color{R: 85, G: 58, B: 48, A: 255})
+	// Desk legs
+	rl.DrawRectangle(238, 155, 6, 5, rl.Color{R: 65, G: 45, B: 38, A: 255})
+	rl.DrawRectangle(306, 155, 6, 5, rl.Color{R: 65, G: 45, B: 38, A: 255})
+
+	// Drawer
+	rl.DrawRectangle(255, 110, 40, 25, rl.Color{R: 65, G: 45, B: 38, A: 255})
+	rl.DrawCircle(275, 122, 2, rl.Color{R: 180, G: 160, B: 100, A: 255})
+
+	// Open spellbook
+	rl.DrawRectangle(245, 82, 30, 8, rl.Color{R: 90, G: 60, B: 50, A: 255})
+	rl.DrawRectangle(247, 80, 12, 8, rl.Color{R: 230, G: 220, B: 190, A: 255})
+	rl.DrawRectangle(261, 80, 12, 8, rl.Color{R: 225, G: 215, B: 185, A: 255})
+	// Text lines
+	rl.DrawLine(249, 82, 257, 82, rl.Color{R: 60, G: 50, B: 40, A: 200})
+	rl.DrawLine(249, 84, 256, 84, rl.Color{R: 60, G: 50, B: 40, A: 200})
+	rl.DrawLine(263, 82, 270, 82, rl.Color{R: 60, G: 50, B: 40, A: 200})
+	rl.DrawLine(263, 84, 269, 84, rl.Color{R: 60, G: 50, B: 40, A: 200})
+
+	// Quill in inkwell
+	rl.DrawRectangle(280, 82, 6, 8, rl.Color{R: 40, G: 35, B: 50, A: 255})
+	rl.DrawLine(283, 82, 290, 70, rl.Color{R: 220, G: 200, B: 180, A: 255})
+	rl.DrawLine(290, 70, 295, 65, rl.Color{R: 180, G: 100, B: 80, A: 255})
+
+	// === CANDELABRA - Triple candle ===
+	candleX := int32(300)
+	// Base
+	rl.DrawRectangle(candleX-8, 88, 16, 4, rl.Color{R: 180, G: 160, B: 100, A: 255})
+	rl.DrawRectangle(candleX-2, 84, 4, 4, rl.Color{R: 170, G: 150, B: 90, A: 255})
+
+	// Three candles
+	candleOffsets := []int32{-6, 0, 6}
+	for i, off := range candleOffsets {
+		cx := candleX + off
+		// Candle body
+		rl.DrawRectangle(cx-2, 72, 4, 12, rl.Color{R: 235, G: 225, B: 200, A: 255})
+
+		// Animated flame
+		flicker := simpleSinF(float64(time)*8.0 + float64(i)*2.0)
+		flickerX := int32(flicker * 1.5)
+		flickerH := int32(6 + flicker*2)
+
+		// Outer glow
+		rl.DrawCircle(cx+flickerX, 68, 8, rl.Color{R: 255, G: 200, B: 100, A: 30})
+		rl.DrawCircle(cx+flickerX, 68, 5, rl.Color{R: 255, G: 180, B: 80, A: 50})
+
+		// Flame
+		rl.DrawRectangle(cx-1+flickerX, 72-flickerH, 3, flickerH, rl.Color{R: 255, G: 180, B: 80, A: 255})
+		rl.DrawRectangle(cx+flickerX, 72-flickerH+1, 2, flickerH-2, rl.Color{R: 255, G: 220, B: 150, A: 255})
+		rl.DrawPixel(cx+flickerX, 72-flickerH+2, rl.Color{R: 255, G: 255, B: 220, A: 255})
+	}
+
+	// === POTION SHELF - Above desk ===
+	rl.DrawRectangle(250, 40, 60, 6, rl.Color{R: 70, G: 48, B: 40, A: 255})
+	// Shelf bracket
+	rl.DrawTriangle(
+		rl.Vector2{X: 252, Y: 46},
+		rl.Vector2{X: 252, Y: 55},
+		rl.Vector2{X: 260, Y: 46},
+		rl.Color{R: 65, G: 45, B: 38, A: 255},
+	)
+	rl.DrawTriangle(
+		rl.Vector2{X: 308, Y: 46},
+		rl.Vector2{X: 308, Y: 55},
+		rl.Vector2{X: 300, Y: 46},
+		rl.Color{R: 65, G: 45, B: 38, A: 255},
+	)
+
+	// Potions with bubbling animation
+	potionColors := []rl.Color{
+		{R: 200, G: 80, B: 100, A: 255},  // Red health
+		{R: 80, G: 150, B: 200, A: 255},  // Blue mana
+		{R: 100, G: 200, B: 120, A: 255}, // Green poison
+	}
+	for i, pc := range potionColors {
+		px := int32(260 + i*20)
+		// Bottle
+		rl.DrawRectangle(px, 28, 8, 12, rl.Color{R: 200, G: 200, B: 220, A: 100})
+		// Liquid
+		bubbleOff := int32(simpleSinF(float64(time)*3.0+float64(i)*1.5) * 2)
+		rl.DrawRectangle(px+1, 32+bubbleOff, 6, 7-bubbleOff, pc)
+		// Cork
+		rl.DrawRectangle(px+2, 26, 4, 3, rl.Color{R: 140, G: 100, B: 70, A: 255})
+		// Shine
+		rl.DrawPixel(px+2, 30, rl.Color{R: 255, G: 255, B: 255, A: 150})
+	}
+
+	// === FLOATING DUST MOTES in candlelight ===
+	for i := 0; i < 15; i++ {
+		baseX := float64(220 + (i*41)%100)
+		baseY := float64(50 + (i*37)%100)
+		fx := baseX + 15*simpleSinF(float64(time)*0.3+float64(i)*0.7)
+		fy := baseY + 10*simpleSinF(float64(time)*0.5+float64(i)*1.1)
+		alpha := uint8(80 + 40*simpleSinF(float64(time)*0.8+float64(i)))
+		rl.DrawPixel(int32(fx), int32(fy), rl.Color{R: 255, G: 240, B: 200, A: alpha})
+	}
+
+	// === SMALL DETAILS ===
+	// Skull on bookshelf (spooky but cute)
+	rl.DrawCircle(45, 140, 5, rl.Color{R: 230, G: 225, B: 215, A: 255})
+	rl.DrawPixel(43, 139, rl.Color{R: 30, G: 25, B: 35, A: 255})
+	rl.DrawPixel(47, 139, rl.Color{R: 30, G: 25, B: 35, A: 255})
+	rl.DrawPixel(45, 142, rl.Color{R: 30, G: 25, B: 35, A: 200})
+
+	// Crystal ball on desk corner
+	crystalX, crystalY := int32(240), int32(82)
+	rl.DrawCircle(crystalX, crystalY, 6, rl.Color{R: 80, G: 100, B: 140, A: 200})
+	rl.DrawCircle(crystalX-1, crystalY-1, 4, rl.Color{R: 100, G: 120, B: 160, A: 180})
+	// Swirling mist inside
+	mistAngle := time * 2.0
+	mx := int32(simpleSinF(float64(mistAngle)) * 2)
+	my := int32(simpleSinF(float64(mistAngle)+1.5) * 2)
+	rl.DrawPixel(crystalX+mx, crystalY+my, rl.Color{R: 180, G: 200, B: 255, A: 200})
+	// Shine
+	rl.DrawPixel(crystalX-2, crystalY-2, rl.Color{R: 255, G: 255, B: 255, A: 200})
 }
 
 func (r *Renderer) drawClaude(state *AnimationState) {
@@ -464,6 +1526,11 @@ func getHeadOffset(state *AnimationState) (float32, float32) {
 	case AnimThinking:
 		sway := []int{0, 0, 0, 1, 1, 1, 0, 0, 0, -1, -1, -1}
 		return float32(sway[f%len(sway)]), 0
+
+	case AnimWalk:
+		// bob is added to body position in spritegen (bob=1 means body down)
+		bobCurve := []int{0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0}
+		return 0, float32(bobCurve[f%len(bobCurve)])
 	}
 
 	return 0, 0
@@ -766,9 +1833,9 @@ func (r *Renderer) DrawAccessoryPicker() {
 	valueW := int32(50)
 	gap := int32(3)
 
-	// Calculate panel size
+	// Calculate panel size (3 rows now)
 	panelW := padding + labelW + gap + arrowW + valueW + arrowW + padding
-	panelH := padding + rowH + gap + rowH + padding
+	panelH := padding + rowH + gap + rowH + gap + rowH + padding
 
 	// Position in bottom-left corner
 	panelX := int32(4)
@@ -849,6 +1916,40 @@ func (r *Renderer) DrawAccessoryPicker() {
 
 	// Right arrow
 	rl.DrawText(">", x, rowY+2, 8, faceArrowColor)
+
+	// === ROW 3: MODE ===
+	rowY = panelY + padding + rowH + gap + rowH + gap
+	x = panelX + padding
+
+	// Determine colors based on active row
+	modeLabelColor := labelDim
+	modeArrowColor := arrowDim
+	if r.activeRow == 2 {
+		modeLabelColor = labelActive
+		modeArrowColor = arrowActive
+	}
+
+	// Label
+	rl.DrawText("MODE", x, rowY+2, 8, modeLabelColor)
+	x += labelW + gap
+
+	// Left arrow
+	rl.DrawText("<", x, rowY+2, 8, modeArrowColor)
+	x += arrowW
+
+	// Value
+	modeName := r.GetCurrentModeName()
+	modeColor := valueDim
+	if r.activeRow == 2 {
+		modeColor = valueActive
+	}
+	modeTextW := rl.MeasureText(modeName, 8)
+	modeTextX := x + (valueW-modeTextW)/2
+	rl.DrawText(modeName, modeTextX, rowY+2, 8, modeColor)
+	x += valueW
+
+	// Right arrow
+	rl.DrawText(">", x, rowY+2, 8, modeArrowColor)
 }
 
 func (r *Renderer) drawDebug(state *AnimationState) {
@@ -866,6 +1967,397 @@ func (r *Renderer) drawDebug(state *AnimationState) {
 	// FPS
 	fpsText := fmt.Sprintf("FPS: %d", rl.GetFPS())
 	rl.DrawText(fpsText, 5, 35, 8, rl.Green)
+}
+
+// DrawGameUI renders the game UI elements (quest text, mana bar, etc.)
+func (r *Renderer) DrawGameUI(state *GameState) {
+	// Draw quest text at top
+	r.drawQuestText(state)
+
+	// Draw mana bar at bottom
+	r.drawManaBar(state)
+
+	// Draw think hard effects
+	if state.ThinkHardActive {
+		r.drawThinkHardEffect(state)
+	}
+
+	// Draw compact/rest effects
+	if state.CompactActive {
+		r.drawCompactEffect(state)
+	}
+}
+
+// drawQuestText renders the current quest/user prompt
+func (r *Renderer) drawQuestText(state *GameState) {
+	if state.QuestText == "" || state.QuestFade <= 0 {
+		return
+	}
+
+	// Colors with alpha based on fade
+	alpha := uint8(state.QuestFade * 255)
+	panelBg := rl.Color{R: 15, G: 12, B: 25, A: uint8(float32(alpha) * 0.85)}
+	borderColor := rl.Color{R: 80, G: 65, B: 110, A: alpha}
+	textColor := rl.Color{R: 220, G: 210, B: 190, A: alpha}
+	labelColor := rl.Color{R: 160, G: 120, B: 60, A: alpha}
+
+	// Panel dimensions - full width, multi-line support
+	padding := int32(3)
+	panelX := int32(5)
+	panelY := int32(3)
+	panelWidth := int32(screenWidth - 10)
+
+	// Word wrap the text
+	maxLineWidth := panelWidth - padding*2 - 2
+	lines := wordWrap(state.QuestText, 6, maxLineWidth)
+	if len(lines) > 3 {
+		lines = lines[:3] // Max 3 lines
+		lines[2] = lines[2] + "..."
+	}
+
+	lineHeight := int32(8)
+	panelHeight := int32(len(lines))*lineHeight + padding*2
+
+	// Draw panel background
+	rl.DrawRectangle(panelX-1, panelY-1, panelWidth+2, panelHeight+2, borderColor)
+	rl.DrawRectangle(panelX, panelY, panelWidth, panelHeight, panelBg)
+
+	// Draw each line
+	for i, line := range lines {
+		y := panelY + padding + int32(i)*lineHeight
+		if i == 0 {
+			// First line with label
+			rl.DrawText(">", panelX+padding, y, 6, labelColor)
+			rl.DrawText(line, panelX+padding+8, y, 6, textColor)
+		} else {
+			rl.DrawText(line, panelX+padding+8, y, 6, textColor)
+		}
+	}
+}
+
+// wordWrap splits text into lines that fit within maxWidth
+func wordWrap(text string, fontSize int32, maxWidth int32) []string {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+
+	var lines []string
+	currentLine := ""
+
+	for _, word := range words {
+		testLine := currentLine
+		if testLine != "" {
+			testLine += " "
+		}
+		testLine += word
+
+		if rl.MeasureText(testLine, fontSize) <= maxWidth {
+			currentLine = testLine
+		} else {
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+			}
+			currentLine = word
+		}
+	}
+
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+
+	return lines
+}
+
+// drawManaBar renders the context window usage as a mana bar
+func (r *Renderer) drawManaBar(state *GameState) {
+	// Position in bottom right, next to accessory picker
+	barX := int32(100)
+	barY := int32(screenHeight - 12)
+	barWidth := int32(screenWidth - 105)
+	barHeight := int32(8)
+
+	// Background
+	bgColor := rl.Color{R: 20, G: 18, B: 30, A: 230}
+	borderColor := rl.Color{R: 60, G: 55, B: 80, A: 255}
+	rl.DrawRectangle(barX-1, barY-1, barWidth+2, barHeight+2, borderColor)
+	rl.DrawRectangle(barX, barY, barWidth, barHeight, bgColor)
+
+	// Calculate fill
+	fillRatio := state.ManaDisplay / float32(state.ManaMax)
+	if fillRatio > 1 {
+		fillRatio = 1
+	}
+	fillWidth := int32(float32(barWidth-2) * fillRatio)
+
+	// Color based on usage
+	var fillColor rl.Color
+	if fillRatio < 0.5 {
+		// Blue - safe
+		fillColor = rl.Color{R: 80, G: 120, B: 200, A: 255}
+	} else if fillRatio < 0.75 {
+		// Yellow - caution
+		fillColor = rl.Color{R: 200, G: 180, B: 80, A: 255}
+	} else if fillRatio < 0.9 {
+		// Orange - warning
+		fillColor = rl.Color{R: 220, G: 140, B: 60, A: 255}
+	} else {
+		// Red - danger
+		fillColor = rl.Color{R: 200, G: 80, B: 80, A: 255}
+	}
+
+	// Draw fill
+	if fillWidth > 0 {
+		rl.DrawRectangle(barX+1, barY+1, fillWidth, barHeight-2, fillColor)
+	}
+
+	// Draw label
+	labelColor := rl.Color{R: 120, G: 115, B: 140, A: 255}
+	rl.DrawText("MANA", barX-30, barY, 8, labelColor)
+
+	// Draw token count
+	if state.ManaTotal > 0 {
+		tokenText := fmt.Sprintf("%dk", state.ManaTotal/1000)
+		textWidth := rl.MeasureText(tokenText, 8)
+		rl.DrawText(tokenText, barX+barWidth-textWidth-2, barY, 8, rl.Color{R: 160, G: 155, B: 180, A: 255})
+	}
+}
+
+// drawThinkHardEffect renders firework-style particle effects
+func (r *Renderer) drawThinkHardEffect(state *GameState) {
+	// Get the burst text based on think level
+	var burstText string
+	var baseColor rl.Color
+	var isUltra bool
+	var particleIntensity float32
+
+	switch state.ThinkLevel {
+	case ThinkNormal:
+		burstText = "THINK!"
+		baseColor = rl.Color{R: 150, G: 180, B: 255, A: 255}
+		particleIntensity = 0.15
+	case ThinkHard:
+		burstText = "THINK HARD!"
+		baseColor = rl.Color{R: 255, G: 200, B: 80, A: 255}
+		particleIntensity = 0.25
+	case ThinkHarder:
+		burstText = "THINK HARDER!"
+		baseColor = rl.Color{R: 255, G: 150, B: 50, A: 255}
+		particleIntensity = 0.35
+	case ThinkUltra:
+		burstText = "ULTRATHINK!"
+		isUltra = true
+		particleIntensity = 0.5
+	default:
+		burstText = "THINK!"
+		baseColor = rl.Color{R: 200, G: 220, B: 255, A: 255}
+		particleIntensity = 0.15
+	}
+
+	// Position varies based on timer - cycles through different spots
+	positions := []struct{ x, y int32 }{
+		{screenWidth/2 + 40, 70},  // Right of head
+		{screenWidth/2 - 50, 65},  // Left of head
+		{screenWidth/2 + 50, 55},  // Upper right
+		{screenWidth/2 - 40, 80},  // Lower left
+		{screenWidth/2, 50},       // Above head
+	}
+	posIdx := int(state.ThinkHardTimer*1.5) % len(positions)
+	cx := positions[posIdx].x
+	cy := positions[posIdx].y
+
+	// Spawn firework particles
+	r.spawnThinkParticles(float32(cx), float32(cy), particleIntensity, isUltra, state.ThinkHardTimer)
+
+	// Measure text
+	fontSize := int32(8)
+	if isUltra {
+		fontSize = 10
+	}
+	textWidth := rl.MeasureText(burstText, fontSize)
+
+	// Subtle pulsing glow behind text
+	pulse := float32(1.0) + float32(0.1*simpleSinF(float64(state.ThinkHardTimer*6)))
+	glowW := int32(float32(textWidth+8) * pulse)
+	glowH := int32(float32(fontSize+6) * pulse)
+	glowX := cx - glowW/2
+	glowY := cy - glowH/2
+
+	// Draw glow (semi-transparent background)
+	glowColor := baseColor
+	if isUltra {
+		hue := int(state.ThinkHardTimer*200) % 360
+		glowColor = hsvToRGB(hue, 0.6, 1.0)
+	}
+	glowColor.A = 150
+	rl.DrawRectangle(glowX, glowY, glowW, glowH, glowColor)
+
+	// Draw text
+	textX := cx - textWidth/2
+	textY := cy - fontSize/2
+
+	// Shadow for all
+	shadowColor := rl.Color{R: 20, G: 15, B: 30, A: 180}
+	rl.DrawText(burstText, textX+1, textY+1, fontSize, shadowColor)
+
+	if isUltra {
+		// Cycling bright color for ULTRATHINK
+		hue := int(state.ThinkHardTimer*300) % 360
+		textColor := hsvToRGB(hue, 1.0, 1.0)
+		rl.DrawText(burstText, textX, textY, fontSize, textColor)
+	} else {
+		rl.DrawText(burstText, textX, textY, fontSize, baseColor)
+	}
+}
+
+// spawnThinkParticles creates firework-style particles for thinking effect
+func (r *Renderer) spawnThinkParticles(cx, cy, intensity float32, isUltra bool, timer float32) {
+	// Spawn rate based on intensity
+	if rand.Float32() > intensity {
+		return
+	}
+
+	// Create a burst of particles
+	numParticles := 2
+	if isUltra {
+		numParticles = 4
+	}
+
+	for i := 0; i < numParticles; i++ {
+		// Random angle for burst direction
+		angle := rand.Float32() * 6.28318 // 2*PI
+
+		// Velocity based on angle
+		speed := float64(20 + rand.Float32()*40)
+		vx := speed * simpleCosF(float64(angle))
+		vy := speed * simpleSinF(float64(angle))
+
+		// Color
+		var color rl.Color
+		if isUltra {
+			// Rainbow colors
+			hue := (int(timer*200) + rand.Intn(120)) % 360
+			color = hsvToRGB(hue, 1.0, 1.0)
+		} else {
+			// Warm colors - yellows, oranges, whites
+			colors := []rl.Color{
+				{R: 255, G: 255, B: 200, A: 255}, // White-yellow
+				{R: 255, G: 220, B: 100, A: 255}, // Yellow
+				{R: 255, G: 180, B: 80, A: 255},  // Orange
+				{R: 255, G: 200, B: 150, A: 255}, // Light orange
+			}
+			color = colors[rand.Intn(len(colors))]
+		}
+
+		// Spawn particle near center with some spread
+		px := cx + (rand.Float32()-0.5)*10
+		py := cy + (rand.Float32()-0.5)*10
+
+		r.particles = append(r.particles, Particle{
+			X:       px,
+			Y:       py,
+			VX:      float32(vx),
+			VY:      float32(vy),
+			Life:    0.4 + rand.Float32()*0.4,
+			MaxLife: 0.8,
+			Color:   color,
+			Size:    1 + rand.Float32()*2,
+		})
+	}
+
+	// Extra trailing sparkles for ultra
+	if isUltra && rand.Float32() < 0.3 {
+		// Spawn a larger, slower sparkle
+		hue := int(timer*300) % 360
+		r.particles = append(r.particles, Particle{
+			X:       cx + (rand.Float32()-0.5)*30,
+			Y:       cy + (rand.Float32()-0.5)*20,
+			VX:      (rand.Float32() - 0.5) * 10,
+			VY:      -5 - rand.Float32()*10,
+			Life:    0.8,
+			MaxLife: 0.8,
+			Color:   hsvToRGB(hue, 1.0, 1.0),
+			Size:    3,
+		})
+	}
+}
+
+// hsvToRGB converts HSV to RGB color
+func hsvToRGB(h int, s, v float64) rl.Color {
+	h = h % 360
+	c := v * s
+	x := c * (1 - abs(float64(h%120)/60.0-1))
+	m := v - c
+
+	var r, g, b float64
+	switch {
+	case h < 60:
+		r, g, b = c, x, 0
+	case h < 120:
+		r, g, b = x, c, 0
+	case h < 180:
+		r, g, b = 0, c, x
+	case h < 240:
+		r, g, b = 0, x, c
+	case h < 300:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+
+	return rl.Color{
+		R: uint8((r + m) * 255),
+		G: uint8((g + m) * 255),
+		B: uint8((b + m) * 255),
+		A: 255,
+	}
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func simpleSinF(rad float64) float64 {
+	// Use standard math would be better but keeping simple
+	// Approximate with lookup
+	deg := int(rad * 180 / 3.14159)
+	sins := []float64{0, 0.5, 0.87, 1, 0.87, 0.5, 0, -0.5, -0.87, -1, -0.87, -0.5}
+	idx := ((deg % 360) + 360) % 360
+	return sins[(idx/30)%12]
+}
+
+func simpleCosF(rad float64) float64 {
+	return simpleSinF(rad + 1.5708) // +90 degrees
+}
+
+// drawCompactEffect renders the rest/sleep effect after compact
+func (r *Renderer) drawCompactEffect(state *GameState) {
+	// Draw "Zzz" floating up
+	progress := state.CompactTimer / 2.0 // 0 to 1 over 2 seconds
+
+	// Zzz text position - floats up and fades
+	zx := int32(screenWidth/2 + 25)
+	zy := int32(70 - int32(progress*20))
+
+	alpha := uint8((1.0 - progress) * 255)
+	zColor := rl.Color{R: 180, G: 180, B: 220, A: alpha}
+
+	// Draw multiple Z's at different sizes
+	rl.DrawText("z", zx, zy, 8, zColor)
+	rl.DrawText("z", zx+8, zy-6, 10, zColor)
+	rl.DrawText("Z", zx+18, zy-14, 12, zColor)
+
+	// Draw "REST" text
+	if progress < 0.5 {
+		restAlpha := uint8((0.5 - progress) * 2 * 200)
+		restColor := rl.Color{R: 100, G: 180, B: 100, A: restAlpha}
+		restText := "MANA RESTORED"
+		restWidth := rl.MeasureText(restText, 8)
+		rl.DrawText(restText, (screenWidth-restWidth)/2, 45, 8, restColor)
+	}
 }
 
 // Unload frees all loaded textures

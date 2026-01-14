@@ -13,7 +13,125 @@ const (
 	screenHeight = 200
 	windowScale  = 2 // Initial scale (640x400 ~ terminal size)
 	windowTitle  = "Claude Quest"
+	maxTokens    = 200000 // Opus 4.5 context window
 )
+
+// GameState tracks UI state for quest text, mana bar, todos
+type GameState struct {
+	// Quest display
+	QuestText   string
+	QuestTimer  float32
+	QuestFade   float32
+
+	// Mana bar (context window)
+	ManaTotal   int
+	ManaMax     int
+	ManaDisplay float32 // Smoothly animated value
+
+	// Todos
+	Todos       []TodoItem
+
+	// Effects
+	ThinkHardActive bool
+	ThinkHardTimer  float32
+	ThinkLevel      ThinkLevel
+	CompactActive   bool
+	CompactTimer    float32
+}
+
+// NewGameState creates a new game state
+func NewGameState() *GameState {
+	return &GameState{
+		ManaMax:     maxTokens,
+		ManaDisplay: 0,
+	}
+}
+
+// Update updates game state animations
+func (g *GameState) Update(dt float32) {
+	// Animate quest fade
+	if g.QuestText != "" {
+		g.QuestTimer += dt
+		if g.QuestTimer < 0.5 {
+			// Fade in
+			g.QuestFade = g.QuestTimer / 0.5
+		} else if g.QuestTimer < 8.0 {
+			// Full display
+			g.QuestFade = 1.0
+		} else if g.QuestTimer < 9.0 {
+			// Fade out
+			g.QuestFade = 1.0 - (g.QuestTimer - 8.0)
+		} else {
+			// Clear
+			g.QuestText = ""
+			g.QuestTimer = 0
+			g.QuestFade = 0
+		}
+	}
+
+	// Smooth mana animation
+	target := float32(g.ManaTotal)
+	if g.ManaDisplay < target {
+		g.ManaDisplay += (target - g.ManaDisplay) * dt * 3
+	} else if g.ManaDisplay > target {
+		g.ManaDisplay -= (g.ManaDisplay - target) * dt * 3
+	}
+
+	// Think hard effect timer
+	if g.ThinkHardActive {
+		g.ThinkHardTimer += dt
+		if g.ThinkHardTimer > 3.0 {
+			g.ThinkHardActive = false
+			g.ThinkHardTimer = 0
+		}
+	}
+
+	// Compact effect timer
+	if g.CompactActive {
+		g.CompactTimer += dt
+		if g.CompactTimer > 2.0 {
+			g.CompactActive = false
+			g.CompactTimer = 0
+		}
+	}
+}
+
+// HandleEvent updates game state based on events
+func (g *GameState) HandleEvent(event Event) {
+	// Update mana from token usage
+	if event.TokenUsage != nil {
+		g.ManaTotal = event.TokenUsage.Total()
+	}
+
+	// Handle specific event types
+	switch event.Type {
+	case EventQuest:
+		g.QuestText = event.Details
+		g.QuestTimer = 0
+		g.QuestFade = 0
+
+	case EventThinkHard:
+		g.QuestText = event.Details
+		g.QuestTimer = 0
+		g.ThinkHardActive = true
+		g.ThinkHardTimer = 0
+		g.ThinkLevel = event.ThinkLevel
+		if g.ThinkLevel == ThinkNone {
+			g.ThinkLevel = ThinkHard // Default if not specified
+		}
+
+	case EventCompact:
+		g.CompactActive = true
+		g.CompactTimer = 0
+		// Reset mana after compact
+		g.ManaTotal = 0
+
+	case EventTodoUpdate:
+		if event.TodoItems != nil {
+			g.Todos = event.TodoItems
+		}
+	}
+}
 
 // getScaledDestRect calculates destination rectangle that maintains aspect ratio and centers content
 func getScaledDestRect() rl.Rectangle {
@@ -64,6 +182,8 @@ var animationNames = []string{
 
 func runDemo() {
 	fmt.Println("Demo mode - cycling through all animations")
+	fmt.Println("Keys: Q=quest, M=mana, C=compact, W=walk mode")
+	fmt.Println("Think: 1=think, 2=think hard, 3=think harder, 4=ULTRATHINK")
 
 	// Enable resizable window
 	rl.SetConfigFlags(rl.FlagWindowResizable)
@@ -78,13 +198,23 @@ func runDemo() {
 	defer rl.UnloadRenderTexture(target)
 
 	config := LoadConfig("config.json")
-	config.Debug = true
+	config.Debug = false // Disable debug info in demo
 	renderer := NewRenderer(config)
 	animations := NewAnimationSystem()
+	gameState := NewGameState()
 
 	currentAnim := 0
 	animTimer := float32(0)
 	animDuration := float32(2.0) // Show each animation for 2 seconds
+
+	// Demo quests
+	demoQuests := []string{
+		"help me implement user authentication",
+		"fix the bug in the login form",
+		"add dark mode support",
+		"optimize database queries",
+	}
+	questIndex := 0
 
 	// Start with first animation
 	animations.HandleEvent(Event{Type: EventType(currentAnim)})
@@ -103,30 +233,90 @@ func runDemo() {
 				EventIdle, EventSystemInit, EventReading, EventBash,
 				EventWriting, EventSuccess, EventError, EventThinking,
 			}
-			animations.HandleEvent(Event{Type: eventTypes[currentAnim]})
+			event := Event{Type: eventTypes[currentAnim]}
+
+			// Add token usage to some events
+			if currentAnim > 0 {
+				event.TokenUsage = &TokenUsage{
+					InputTokens:         10000 + currentAnim*15000,
+					CacheReadTokens:     20000 + currentAnim*10000,
+					CacheCreationTokens: 5000,
+				}
+			}
+
+			animations.HandleEvent(event)
+			gameState.HandleEvent(event)
 		}
 
 		animations.Update(dt)
+		gameState.Update(dt)
+		renderer.UpdateScroll(dt)
 
 		// Handle keyboard input for accessories
-		// Up/Down = switch row, Left/Right = cycle value
 		if rl.IsKeyPressed(rl.KeyUp) {
 			renderer.SwitchRow(-1)
 		}
 		if rl.IsKeyPressed(rl.KeyDown) {
 			renderer.SwitchRow(1)
 		}
+		// Toggle walk mode
+		if rl.IsKeyPressed(rl.KeyW) {
+			renderer.ToggleWalkMode()
+			animations.SetWalkMode(renderer.IsWalkMode())
+		}
 		if rl.IsKeyPressed(rl.KeyLeft) {
 			renderer.CycleActive(-1)
+			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
 		}
 		if rl.IsKeyPressed(rl.KeyRight) {
 			renderer.CycleActive(1)
+			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
+		}
+
+		// Demo triggers
+		if rl.IsKeyPressed(rl.KeyQ) {
+			// Show quest
+			gameState.HandleEvent(Event{
+				Type:    EventQuest,
+				Details: demoQuests[questIndex%len(demoQuests)],
+			})
+			questIndex++
+		}
+		if rl.IsKeyPressed(rl.KeyM) {
+			// Increase mana
+			gameState.ManaTotal += 25000
+			if gameState.ManaTotal > gameState.ManaMax {
+				gameState.ManaTotal = 25000
+			}
+		}
+		// Think levels: 1, 2, 3, 4
+		if rl.IsKeyPressed(rl.KeyOne) {
+			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "really think about this", ThinkLevel: ThinkNormal})
+			animations.HandleEvent(Event{Type: EventThinkHard})
+		}
+		if rl.IsKeyPressed(rl.KeyTwo) {
+			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "think hard about this problem", ThinkLevel: ThinkHard})
+			animations.HandleEvent(Event{Type: EventThinkHard})
+		}
+		if rl.IsKeyPressed(rl.KeyThree) {
+			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "think harder! this is complex", ThinkLevel: ThinkHarder})
+			animations.HandleEvent(Event{Type: EventThinkHard})
+		}
+		if rl.IsKeyPressed(rl.KeyFour) {
+			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "ULTRATHINK mode activated!", ThinkLevel: ThinkUltra})
+			animations.HandleEvent(Event{Type: EventThinkHard})
+		}
+		if rl.IsKeyPressed(rl.KeyC) {
+			// Compact effect
+			gameState.HandleEvent(Event{Type: EventCompact})
+			animations.HandleEvent(Event{Type: EventCompact})
 		}
 
 		// Render
 		rl.BeginTextureMode(target)
 		rl.ClearBackground(rl.Color{R: 24, G: 20, B: 37, A: 255})
 		renderer.Draw(animations.GetState())
+		renderer.DrawGameUI(gameState)
 		renderer.DrawAccessoryPicker()
 		rl.EndTextureMode()
 
@@ -238,17 +428,23 @@ func main() {
 	config := LoadConfig("config.json")
 	renderer := NewRenderer(config)
 	animations := NewAnimationSystem()
+	gameState := NewGameState()
 
 	for !rl.WindowShouldClose() {
+		dt := rl.GetFrameTime()
+
 		// Process any pending events from the watcher
 		select {
 		case event := <-watcher.Events:
 			animations.HandleEvent(event)
+			gameState.HandleEvent(event)
 		default:
 		}
 
-		// Update animation state
-		animations.Update(rl.GetFrameTime())
+		// Update systems
+		animations.Update(dt)
+		gameState.Update(dt)
+		renderer.UpdateScroll(dt)
 
 		// Handle keyboard input for accessories
 		// Up/Down = switch row, Left/Right = cycle value
@@ -260,15 +456,23 @@ func main() {
 		}
 		if rl.IsKeyPressed(rl.KeyLeft) {
 			renderer.CycleActive(-1)
+			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
 		}
 		if rl.IsKeyPressed(rl.KeyRight) {
 			renderer.CycleActive(1)
+			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
+		}
+		// Toggle walk mode with W
+		if rl.IsKeyPressed(rl.KeyW) {
+			renderer.ToggleWalkMode()
+			animations.SetWalkMode(renderer.IsWalkMode())
 		}
 
 		// Render to texture at native resolution
 		rl.BeginTextureMode(target)
 		rl.ClearBackground(rl.Color{R: 24, G: 20, B: 37, A: 255}) // Dark purple bg
 		renderer.Draw(animations.GetState())
+		renderer.DrawGameUI(gameState)
 		renderer.DrawAccessoryPicker()
 		rl.EndTextureMode()
 

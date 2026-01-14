@@ -18,33 +18,104 @@ type EventType int
 const (
 	EventSystemInit EventType = iota
 	EventThinking
-	EventReading  // Glob, Read tools
-	EventBash     // Bash tool
-	EventWriting  // Edit, Write tools
-	EventSuccess  // Successful result
-	EventError    // Error result
-	EventIdle     // No activity
+	EventReading    // Glob, Read, Grep, WebFetch, WebSearch
+	EventBash       // Bash tool
+	EventWriting    // Edit, Write, NotebookEdit
+	EventSuccess    // Successful result
+	EventError      // Error result
+	EventIdle       // No activity
+
+	// New event types
+	EventQuest      // User prompt (quest text)
+	EventCompact    // Conversation compacted (sleep/rest)
+	EventThinkHard  // Extended thinking requested
+	EventSpawnAgent // Task tool spawned an agent
+	EventTodoUpdate // TodoWrite tool used
+	EventAskUser    // AskUserQuestion tool
 )
+
+// TokenUsage tracks context window usage for mana bar
+type TokenUsage struct {
+	InputTokens         int `json:"input_tokens"`
+	CacheReadTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationTokens int `json:"cache_creation_input_tokens"`
+	OutputTokens        int `json:"output_tokens"`
+}
+
+// Total returns total tokens used
+func (t *TokenUsage) Total() int {
+	return t.InputTokens + t.CacheReadTokens + t.CacheCreationTokens
+}
+
+// TodoItem represents a single todo item
+type TodoItem struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"activeForm"`
+}
+
+// CompactInfo contains compaction metadata
+type CompactInfo struct {
+	Trigger   string `json:"trigger"`
+	PreTokens int    `json:"preTokens"`
+}
 
 // Event represents a parsed Claude Code event
 type Event struct {
 	Type    EventType
 	Details string
+
+	// Extended data for game mechanics
+	TokenUsage  *TokenUsage  // For mana bar
+	TodoItems   []TodoItem   // For todo display
+	CompactInfo *CompactInfo // For compact/sleep
+	ToolName    string       // Original tool name
+	IsError     bool         // Whether this was an error
+	ThinkLevel  ThinkLevel   // For think hard effects
 }
 
 // ClaudeMessage represents the structure of Claude Code JSONL format
 type ClaudeMessage struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype,omitempty"`
+
+	// For system messages
+	CompactMetadata *CompactInfo `json:"compactMetadata,omitempty"`
+
+	// For summary messages
+	Summary string `json:"summary,omitempty"`
+
+	// Message content
 	Message struct {
 		Role    string `json:"role"`
-		Content []struct {
-			Type  string `json:"type"`
-			Name  string `json:"name,omitempty"`
-			Text  string `json:"text,omitempty"`
-			Input any    `json:"input,omitempty"`
-		} `json:"content"`
+		Model   string `json:"model,omitempty"`
+		Content json.RawMessage `json:"content"` // Can be string or array
+		Usage   *TokenUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
+}
+
+// ContentItem represents a single content item in message.content array
+type ContentItem struct {
+	Type      string          `json:"type"`
+	Name      string          `json:"name,omitempty"`
+	Text      string          `json:"text,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	IsError   bool            `json:"is_error,omitempty"`
+	Content   string          `json:"content,omitempty"` // For tool_result
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+}
+
+// TodoWriteInput represents the input for TodoWrite tool
+type TodoWriteInput struct {
+	Todos []TodoItem `json:"todos"`
+}
+
+// TaskInput represents the input for Task tool
+type TaskInput struct {
+	Description  string `json:"description"`
+	SubagentType string `json:"subagent_type"`
+	Prompt       string `json:"prompt"`
 }
 
 // WatchMode determines how the watcher operates
@@ -62,6 +133,10 @@ type Watcher struct {
 	FilePath    string        // Path to JSONL file
 	ReplaySpeed time.Duration // Delay between events in replay mode
 	lastPos     int64         // Last read position for tailing
+
+	// State tracking
+	LastTokenUsage *TokenUsage
+	CurrentTodos   []TodoItem
 }
 
 // NewWatcher creates a new event watcher
@@ -89,7 +164,7 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 		return fmt.Errorf("no Claude conversations found for %s\nlooked in: %s", projectDir, claudeProjectDir)
 	}
 
-	// Find the most recently modified .jsonl file
+	// Find the most recently modified .jsonl file (excluding agent- files)
 	entries, err := os.ReadDir(claudeProjectDir)
 	if err != nil {
 		return fmt.Errorf("failed to read project directory: %w", err)
@@ -98,7 +173,10 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	var jsonlFiles []os.DirEntry
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".jsonl") {
-			jsonlFiles = append(jsonlFiles, entry)
+			// Skip agent files - they're subagent sessions
+			if !strings.HasPrefix(entry.Name(), "agent-") {
+				jsonlFiles = append(jsonlFiles, entry)
+			}
 		}
 	}
 
@@ -170,10 +248,16 @@ func (w *Watcher) tailFile() {
 			file.Seek(w.lastPos, io.SeekStart)
 			scanner := bufio.NewScanner(file)
 
+			// Increase buffer for large lines
+			buf := make([]byte, 0, 1024*1024)
+			scanner.Buffer(buf, 10*1024*1024)
+
 			for scanner.Scan() {
 				line := scanner.Text()
-				if event := w.parseLine(line); event != nil {
-					w.Events <- *event
+				if events := w.parseLine(line); len(events) > 0 {
+					for _, evt := range events {
+						w.Events <- evt
+					}
 				}
 			}
 
@@ -206,9 +290,11 @@ func (w *Watcher) StartReplay(filePath string) error {
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			if event := w.parseLine(line); event != nil {
-				w.Events <- *event
-				time.Sleep(w.ReplaySpeed)
+			if events := w.parseLine(line); len(events) > 0 {
+				for _, evt := range events {
+					w.Events <- evt
+					time.Sleep(w.ReplaySpeed)
+				}
 			}
 		}
 
@@ -219,70 +305,346 @@ func (w *Watcher) StartReplay(filePath string) error {
 	return nil
 }
 
-// parseLine parses a JSON line and returns an event if applicable
-func (w *Watcher) parseLine(line string) *Event {
+// parseLine parses a JSON line and returns events if applicable
+func (w *Watcher) parseLine(line string) []Event {
 	var msg ClaudeMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {
 		return nil
 	}
 
+	var events []Event
+
 	switch msg.Type {
 	case "system":
-		return &Event{Type: EventSystemInit, Details: "Session started"}
+		events = w.parseSystemMessage(msg)
 
 	case "assistant":
-		// Check for tool use in content
-		for _, content := range msg.Message.Content {
-			if content.Type == "tool_use" {
-				return w.parseToolUse(content.Name)
-			}
-			if content.Type == "thinking" {
-				return &Event{Type: EventThinking, Details: "Thinking..."}
-			}
-			if content.Type == "text" && len(content.Text) > 0 {
-				return &Event{Type: EventThinking, Details: truncate(content.Text, 30)}
-			}
-		}
+		events = w.parseAssistantMessage(msg)
 
 	case "user":
-		// Tool results come as user messages
-		for _, content := range msg.Message.Content {
-			if content.Type == "tool_result" {
-				return nil // Tool result received, animation handled by tool_use
-			}
-		}
+		events = w.parseUserMessage(msg)
 
 	case "result":
-		switch msg.Subtype {
-		case "success":
-			return &Event{Type: EventSuccess, Details: "Task completed!"}
-		case "error_max_turns", "error_during_execution":
-			return &Event{Type: EventError, Details: "Something went wrong"}
+		events = w.parseResultMessage(msg)
+
+	case "summary":
+		// Conversation was summarized (after compact)
+		if msg.Summary != "" {
+			events = append(events, Event{
+				Type:    EventIdle,
+				Details: truncate(msg.Summary, 50),
+			})
 		}
+	}
+
+	return events
+}
+
+// parseSystemMessage handles system type messages
+func (w *Watcher) parseSystemMessage(msg ClaudeMessage) []Event {
+	switch msg.Subtype {
+	case "compact_boundary":
+		// Conversation was compacted - Claude should rest/sleep
+		evt := Event{
+			Type:    EventCompact,
+			Details: "Conversation compacted",
+		}
+		if msg.CompactMetadata != nil {
+			evt.CompactInfo = msg.CompactMetadata
+			evt.Details = fmt.Sprintf("Compacted from %dk tokens", msg.CompactMetadata.PreTokens/1000)
+		}
+		return []Event{evt}
+
+	case "local_command":
+		// User ran a slash command - just acknowledge
+		return nil
+
+	default:
+		// Session start or other system event
+		return []Event{{Type: EventSystemInit, Details: "Session started"}}
+	}
+}
+
+// parseAssistantMessage handles assistant type messages
+func (w *Watcher) parseAssistantMessage(msg ClaudeMessage) []Event {
+	var events []Event
+
+	// Update token usage for mana bar
+	if msg.Message.Usage != nil {
+		w.LastTokenUsage = msg.Message.Usage
+	}
+
+	// Parse content array
+	content := w.parseMessageContent(msg.Message.Content)
+
+	for _, item := range content {
+		switch item.Type {
+		case "tool_use":
+			evt := w.parseToolUse(item)
+			if evt != nil {
+				evt.TokenUsage = w.LastTokenUsage
+				events = append(events, *evt)
+			}
+
+		case "thinking":
+			// Extended thinking block
+			thinkLen := len(item.Thinking)
+			details := "Thinking..."
+			if thinkLen > 500 {
+				details = "Deep thinking..."
+			}
+			events = append(events, Event{
+				Type:       EventThinking,
+				Details:    details,
+				TokenUsage: w.LastTokenUsage,
+			})
+
+		case "text":
+			if len(item.Text) > 0 {
+				events = append(events, Event{
+					Type:       EventThinking,
+					Details:    truncate(item.Text, 40),
+					TokenUsage: w.LastTokenUsage,
+				})
+			}
+		}
+	}
+
+	return events
+}
+
+// parseUserMessage handles user type messages
+func (w *Watcher) parseUserMessage(msg ClaudeMessage) []Event {
+	var events []Event
+
+	content := w.parseMessageContent(msg.Message.Content)
+
+	// Check if this is a tool result or a user prompt
+	hasToolResult := false
+	hasError := false
+
+	for _, item := range content {
+		if item.Type == "tool_result" {
+			hasToolResult = true
+			if item.IsError {
+				hasError = true
+				events = append(events, Event{
+					Type:    EventError,
+					Details: truncate(item.Content, 40),
+					IsError: true,
+				})
+			}
+		}
+	}
+
+	// If not a tool result, this is a user prompt (quest!)
+	if !hasToolResult {
+		text := w.extractUserPromptText(msg.Message.Content)
+		if text != "" {
+			// Check for think hard patterns
+			thinkLevel := detectThinkLevel(text)
+			if thinkLevel != ThinkNone {
+				events = append(events, Event{
+					Type:       EventThinkHard,
+					Details:    truncate(text, 50),
+					ThinkLevel: thinkLevel,
+				})
+			} else {
+				events = append(events, Event{
+					Type:    EventQuest,
+					Details: truncate(text, 100),
+				})
+			}
+		}
+	}
+
+	// Return error event if there was one
+	if hasError && len(events) == 0 {
+		events = append(events, Event{
+			Type:    EventError,
+			Details: "Tool error",
+			IsError: true,
+		})
+	}
+
+	return events
+}
+
+// parseResultMessage handles result type messages
+func (w *Watcher) parseResultMessage(msg ClaudeMessage) []Event {
+	switch msg.Subtype {
+	case "success":
+		return []Event{{Type: EventSuccess, Details: "Task completed!"}}
+	case "error_max_turns", "error_during_execution":
+		return []Event{{Type: EventError, Details: "Something went wrong", IsError: true}}
+	}
+	return nil
+}
+
+// parseMessageContent parses the message content which can be string or array
+func (w *Watcher) parseMessageContent(raw json.RawMessage) []ContentItem {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	// Try as array first
+	var items []ContentItem
+	if err := json.Unmarshal(raw, &items); err == nil {
+		return items
+	}
+
+	// Try as string (user prompt)
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return []ContentItem{{Type: "text", Text: text}}
 	}
 
 	return nil
 }
 
-// parseToolUse maps tool names to event types
-func (w *Watcher) parseToolUse(toolName string) *Event {
-	toolName = strings.ToLower(toolName)
+// extractUserPromptText extracts the user's text from content
+func (w *Watcher) extractUserPromptText(raw json.RawMessage) string {
+	// Try as string first
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+
+	// Try as array
+	var items []ContentItem
+	if err := json.Unmarshal(raw, &items); err == nil {
+		for _, item := range items {
+			if item.Type == "text" && item.Text != "" {
+				return item.Text
+			}
+		}
+	}
+
+	return ""
+}
+
+// parseToolUse handles tool_use content items
+func (w *Watcher) parseToolUse(item ContentItem) *Event {
+	toolName := strings.ToLower(item.Name)
 
 	switch {
+	// Reading tools
 	case toolName == "glob" || toolName == "read" || toolName == "grep":
-		return &Event{Type: EventReading, Details: "Reading " + toolName}
+		return &Event{Type: EventReading, Details: "Reading files", ToolName: item.Name}
+
+	case toolName == "websearch" || toolName == "webfetch":
+		return &Event{Type: EventReading, Details: "Searching web", ToolName: item.Name}
+
+	// Bash execution
 	case toolName == "bash":
-		return &Event{Type: EventBash, Details: "Executing command"}
+		return &Event{Type: EventBash, Details: "Running command", ToolName: item.Name}
+
+	case toolName == "killshell":
+		return &Event{Type: EventBash, Details: "Stopping process", ToolName: item.Name}
+
+	// Writing tools
 	case toolName == "edit" || toolName == "write" || toolName == "notebookedit":
-		return &Event{Type: EventWriting, Details: "Writing code"}
+		return &Event{Type: EventWriting, Details: "Writing code", ToolName: item.Name}
+
+	// Task/Agent spawning
 	case toolName == "task":
-		return &Event{Type: EventThinking, Details: "Spawning agent"}
+		evt := &Event{Type: EventSpawnAgent, Details: "Spawning agent", ToolName: item.Name}
+		// Try to extract agent type from input
+		var taskInput TaskInput
+		if err := json.Unmarshal(item.Input, &taskInput); err == nil {
+			if taskInput.SubagentType != "" {
+				evt.Details = fmt.Sprintf("Agent: %s", taskInput.SubagentType)
+			} else if taskInput.Description != "" {
+				evt.Details = truncate(taskInput.Description, 30)
+			}
+		}
+		return evt
+
+	case toolName == "taskoutput":
+		return &Event{Type: EventThinking, Details: "Waiting for agent", ToolName: item.Name}
+
+	// Todo management
+	case toolName == "todowrite":
+		evt := &Event{Type: EventTodoUpdate, Details: "Updating tasks", ToolName: item.Name}
+		// Parse todos from input
+		var todoInput TodoWriteInput
+		if err := json.Unmarshal(item.Input, &todoInput); err == nil {
+			evt.TodoItems = todoInput.Todos
+			w.CurrentTodos = todoInput.Todos
+
+			// Count status
+			inProgress := 0
+			completed := 0
+			for _, t := range todoInput.Todos {
+				if t.Status == "in_progress" {
+					inProgress++
+				} else if t.Status == "completed" {
+					completed++
+				}
+			}
+			evt.Details = fmt.Sprintf("Tasks: %d/%d done", completed, len(todoInput.Todos))
+		}
+		return evt
+
+	// User interaction
+	case toolName == "askuserquestion":
+		return &Event{Type: EventAskUser, Details: "Asking question", ToolName: item.Name}
+
+	case toolName == "exitplanmode":
+		return &Event{Type: EventThinking, Details: "Plan ready", ToolName: item.Name}
+
+	// Skills
+	case toolName == "skill":
+		return &Event{Type: EventThinking, Details: "Running skill", ToolName: item.Name}
+
 	default:
-		return &Event{Type: EventThinking, Details: "Using " + toolName}
+		return &Event{Type: EventThinking, Details: "Using " + item.Name, ToolName: item.Name}
 	}
 }
 
+// ThinkLevel represents intensity of thinking request
+type ThinkLevel int
+
+const (
+	ThinkNone    ThinkLevel = iota
+	ThinkNormal             // "think"
+	ThinkHard               // "think hard"
+	ThinkHarder             // "think harder"
+	ThinkUltra              // "ultrathink"
+)
+
+// detectThinkLevel checks user message for thinking intensity
+func detectThinkLevel(text string) ThinkLevel {
+	lower := strings.ToLower(text)
+
+	// Check in order of specificity (most specific first)
+	if strings.Contains(lower, "ultrathink") {
+		return ThinkUltra
+	}
+	if strings.Contains(lower, "think harder") {
+		return ThinkHarder
+	}
+	if strings.Contains(lower, "think hard") || strings.Contains(lower, "think deeply") ||
+		strings.Contains(lower, "think carefully") || strings.Contains(lower, "deep think") {
+		return ThinkHard
+	}
+	if strings.Contains(lower, "really think") {
+		return ThinkNormal
+	}
+
+	return ThinkNone
+}
+
+// isThinkHard checks if user message requests extended thinking (any level)
+func isThinkHard(text string) bool {
+	return detectThinkLevel(text) != ThinkNone
+}
+
 func truncate(s string, maxLen int) string {
+	// Remove newlines for cleaner display
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.TrimSpace(s)
+
 	if len(s) <= maxLen {
 		return s
 	}

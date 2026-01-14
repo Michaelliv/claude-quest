@@ -13,12 +13,13 @@ type C = color.RGBA
 const (
 	frameWidth  = 32
 	frameHeight = 32
-	numAnims    = 8
+	numAnims    = 9
 	maxFrames   = 24
 )
 
 // Animation frame counts (must match animations.go) - doubled for smoothness
-var frameCounts = []int{16, 20, 16, 16, 16, 20, 16, 12}
+// Idle, Enter, Casting, Attack, Writing, Victory, Hurt, Thinking, Walk
+var frameCounts = []int{16, 20, 16, 16, 16, 20, 16, 12, 16}
 
 // Claude's official color palette from Clawdachi
 var (
@@ -102,6 +103,9 @@ func drawFrame(img *image.RGBA, anim, frame int) {
 
 	case 7: // Thinking - processing
 		drawClaudeThinking(img, offsetX, offsetY, frame)
+
+	case 8: // Walk - infinite walking cycle
+		drawClaudeWalk(img, offsetX, offsetY, frame)
 	}
 }
 
@@ -241,29 +245,25 @@ func drawClaudeEnter(img *image.RGBA, ox, oy, frame int) {
 	}
 }
 
-func drawClaudeWalking(img *image.RGBA, ox, oy, legPhase int) {
-	// Clamp ox to keep sprite visible
-	if ox < 0 {
-		ox = 0
-	}
+// drawClaudeWalk draws a 16-frame walk cycle with each leg moving independently
+// Wave pattern flows through legs: outer-left -> inner-left -> inner-right -> outer-right
+func drawClaudeWalk(img *image.RGBA, ox, oy, frame int) {
+	// Subtle body bob from leg motion
+	bobCurve := []int{0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0}
+	bob := bobCurve[frame]
 
-	bodyTop := 10
-	bodyBottom := 22
-	bodyLeft := 8
-	bodyRight := 24
+	// Draw body
+	bodyTop := 12 + bob
+	bodyBottom := 22 + bob
 
-	// Body
 	for y := bodyTop; y < bodyBottom; y++ {
-		for x := bodyLeft; x < bodyRight; x++ {
-			px := ox + x
-			if px < 0 || px >= frameWidth*maxFrames {
-				continue
-			}
+		for x := 7; x < 25; x++ {
 			py := oy + y
-			var c color.RGBA
-			if x < bodyLeft+2 {
+			px := ox + x
+			var c C
+			if x < 9 {
 				c = S
-			} else if x >= bodyRight-2 {
+			} else if x >= 23 {
 				c = H
 			} else if y < bodyTop+2 {
 				c = H
@@ -277,56 +277,66 @@ func drawClaudeWalking(img *image.RGBA, ox, oy, legPhase int) {
 	}
 
 	// Eyes
-	eyeY := oy + 13
+	eyeY := oy + 13 + bob
 	for dy := 0; dy < 4; dy++ {
 		for dx := 0; dx < 3; dx++ {
-			if ox+11+dx >= 0 {
-				img.Set(ox+11+dx, eyeY+dy, O)
-			}
-			if ox+18+dx >= 0 {
-				img.Set(ox+18+dx, eyeY+dy, O)
-			}
+			img.Set(ox+11+dx, eyeY+dy, O)
+			img.Set(ox+18+dx, eyeY+dy, O)
 		}
 	}
 
-	// Arms swinging
-	armSwing := []int{-1, 0, 1, 0}[legPhase]
-	armY := oy + 14 + armSwing
+	// Arms - slight bob
+	armY := oy + 15 + bob
 	for dy := 0; dy < 3; dy++ {
-		for dx := 0; dx < 3; dx++ {
-			if ox+5+dx >= 0 {
-				img.Set(ox+5+dx, armY+dy, P)
-			}
-			if ox+24+dx >= 0 {
-				img.Set(ox+24+dx, armY-armSwing+dy, P)
-			}
-		}
+		img.Set(ox+4, armY+dy, S)
+		img.Set(ox+5, armY+dy, P)
+		img.Set(ox+6, armY+dy, P)
+		img.Set(ox+25, armY+dy, P)
+		img.Set(ox+26, armY+dy, P)
+		img.Set(ox+27, armY+dy, H)
 	}
 
-	// 4 Legs walking - 2 left, 2 right with gap in middle
-	legOffsets := [][]int{{0, 2, 2, 0}, {1, 1, 1, 1}, {2, 0, 0, 2}, {1, 1, 1, 1}}[legPhase]
-	legY := oy + 22
-	// Left side - 2 legs
-	for dy := 0; dy < 5; dy++ {
-		if ox+8 >= 0 {
-			img.Set(ox+8, legY+dy+legOffsets[0], S)
-			img.Set(ox+9, legY+dy+legOffsets[0], P)
-		}
-		if ox+11 >= 0 {
-			img.Set(ox+11, legY+dy+legOffsets[1], S)
-			img.Set(ox+12, legY+dy+legOffsets[1], P)
-		}
+	// 4 legs - each has independent timing, wave flows through
+	// Each leg cycle: plant (0-3) -> lift (4-5) -> swing (6-7) -> plant
+	// Legs are offset by 4 frames each for wave effect
+	legY := oy + 22 + bob
+
+	// Leg motion: lift amount and forward/back position
+	// 16 frame cycle per leg, but each leg starts at different phase
+	legCycle := func(phase int) (lift, slide int) {
+		p := phase % 16
+		// Smoother curve: mostly planted, brief lift and swing
+		lifts := []int{0, 0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0}
+		slides := []int{1, 1, 1, 1, 0, 0, 0, -1, -1, 0, 0, 1, 1, 1, 1, 1}
+		return lifts[p], slides[p]
 	}
-	// Right side - 2 legs
+
+	// Each leg offset by 4 frames - creates wave from left to right
+	l1Lift, l1Slide := legCycle(frame)      // outer left
+	l2Lift, l2Slide := legCycle(frame + 4)  // inner left
+	l3Lift, l3Slide := legCycle(frame + 8)  // inner right
+	l4Lift, l4Slide := legCycle(frame + 12) // outer right
+
+	// Draw legs
+	// Leg 1 - outer left (x=8-9)
 	for dy := 0; dy < 5; dy++ {
-		if ox+19 >= 0 {
-			img.Set(ox+19, legY+dy+legOffsets[2], P)
-			img.Set(ox+20, legY+dy+legOffsets[2], H)
-		}
-		if ox+22 >= 0 {
-			img.Set(ox+22, legY+dy+legOffsets[3], P)
-			img.Set(ox+23, legY+dy+legOffsets[3], H)
-		}
+		img.Set(ox+8+l1Slide, legY+dy-l1Lift, S)
+		img.Set(ox+9+l1Slide, legY+dy-l1Lift, P)
+	}
+	// Leg 2 - inner left (x=11-12)
+	for dy := 0; dy < 5; dy++ {
+		img.Set(ox+11+l2Slide, legY+dy-l2Lift, S)
+		img.Set(ox+12+l2Slide, legY+dy-l2Lift, P)
+	}
+	// Leg 3 - inner right (x=19-20)
+	for dy := 0; dy < 5; dy++ {
+		img.Set(ox+19+l3Slide, legY+dy-l3Lift, P)
+		img.Set(ox+20+l3Slide, legY+dy-l3Lift, H)
+	}
+	// Leg 4 - outer right (x=22-23)
+	for dy := 0; dy < 5; dy++ {
+		img.Set(ox+22+l4Slide, legY+dy-l4Lift, P)
+		img.Set(ox+23+l4Slide, legY+dy-l4Lift, H)
 	}
 }
 
