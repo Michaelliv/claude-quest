@@ -1,0 +1,51 @@
+{
+  "name": "claude-quest",
+  "version": "0.1.1",
+  "description": "RPG animation viewer for Claude Code - watch your AI companion come to life",
+  "bin": {
+    "cq": "bin/cq",
+    "claude-quest": "bin/cq"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Michaelliv/claude-quest.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "animation",
+    "rpg",
+    "pixel-art",
+    "cli"
+  ],
+  "author": "Michaelliv",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Michaelliv/claude-quest/issues"
+  },
+  "homepage": "https://github.com/Michaelliv/claude-quest#readme",
+  "files": [
+    "bin",
+    "scripts",
+    "assets",
+    "config.json"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "dependencies": {
+    "tar": "^7.0.0"
+  }
+}

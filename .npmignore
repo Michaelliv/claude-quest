@@ -1,0 +1,25 @@
+# Source files (binary is downloaded)
+*.go
+go.mod
+go.sum
+cmd/
+
+# Build artifacts
+*.exe
+.tmp/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.goreleaser.yaml
+
+# Beads
+.beads/
+
+# Development
+.claude/
+*.jsonl
