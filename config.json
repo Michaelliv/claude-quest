@@ -1,0 +1,11 @@
+{
+  "scale": 3,
+  "fullscreen": false,
+  "debug": true,
+  "sound_enabled": true,
+  "volume": 0.7,
+  "background": "study",
+  "hat": "",
+  "cape": "",
+  "item": ""
+}
