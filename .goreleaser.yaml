@@ -1,0 +1,64 @@
+version: 2
+
+project_name: claude-quest
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cq
+    binary: cq
+    main: .
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: linux
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+      - config.json
+      - assets/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: Michaelliv
+    name: claude-quest
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"

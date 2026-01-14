@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -ldflags="-s -w" -o cq-darwin-${{ matrix.goarch }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cq-darwin-${{ matrix.goarch }}
+          path: cq-darwin-${{ matrix.goarch }}
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxxf86vm-dev
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -trimpath -ldflags="-s -w" -o cq-linux-amd64 .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cq-linux-amd64
+          path: cq-linux-amd64
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -trimpath -ldflags="-s -w -H windowsgui" -o cq-windows-amd64.exe .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cq-windows-amd64
+          path: cq-windows-amd64.exe
+
+  release:
+    needs: [build-macos, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+
+          # macOS Intel
+          cd dist/cq-darwin-amd64
+          chmod +x cq-darwin-amd64
+          tar -czvf ../../release/claude-quest_${{ github.ref_name }}_darwin_amd64.tar.gz cq-darwin-amd64
+          cd ../..
+
+          # macOS Apple Silicon
+          cd dist/cq-darwin-arm64
+          chmod +x cq-darwin-arm64
+          tar -czvf ../../release/claude-quest_${{ github.ref_name }}_darwin_arm64.tar.gz cq-darwin-arm64
+          cd ../..
+
+          # Linux
+          cd dist/cq-linux-amd64
+          chmod +x cq-linux-amd64
+          tar -czvf ../../release/claude-quest_${{ github.ref_name }}_linux_amd64.tar.gz cq-linux-amd64
+          cd ../..
+
+          # Windows
+          cd dist/cq-windows-amd64
+          zip ../../release/claude-quest_${{ github.ref_name }}_windows_amd64.zip cq-windows-amd64.exe
+          cd ../..
+
+          # Checksums
+          cd release
+          sha256sum * > checksums.txt
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
