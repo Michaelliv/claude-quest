@@ -6,13 +6,14 @@ type AnimationType int
 const (
 	AnimIdle AnimationType = iota
 	AnimEnter
-	AnimCasting   // Reading/searching
-	AnimAttack    // Bash commands
-	AnimWriting   // Edit/Write
-	AnimVictory   // Success
-	AnimHurt      // Error
-	AnimThinking  // Processing
-	AnimWalk      // Walking
+	AnimCasting     // Reading/searching
+	AnimAttack      // Bash commands
+	AnimWriting     // Edit/Write
+	AnimVictory     // Success (jumping)
+	AnimHurt        // Error
+	AnimThinking    // Processing
+	AnimWalk        // Walking
+	AnimVictoryPose // Triumphant fist pump
 )
 
 func (a AnimationType) String() string {
@@ -26,6 +27,7 @@ func (a AnimationType) String() string {
 		"Hurt",
 		"Thinking",
 		"Walk",
+		"VictoryPose",
 	}
 	if int(a) < len(names) {
 		return names[a]
@@ -61,15 +63,16 @@ func NewAnimationSystem() *AnimationSystem {
 		},
 		frameDuration: 0.042, // 24 FPS for smooth animation
 		animLengths: map[AnimationType]int{
-			AnimIdle:     16,
-			AnimEnter:    20,
-			AnimCasting:  16,
-			AnimAttack:   16,
-			AnimWriting:  16,
-			AnimVictory:  20,
-			AnimHurt:     16,
-			AnimThinking: 12,
-			AnimWalk:     16,
+			AnimIdle:        16,
+			AnimEnter:       20,
+			AnimCasting:     16,
+			AnimAttack:      16,
+			AnimWriting:     16,
+			AnimVictory:     20,
+			AnimHurt:        16,
+			AnimThinking:    16,
+			AnimWalk:        16,
+			AnimVictoryPose: 20,
 		},
 	}
 }
@@ -119,6 +122,12 @@ func (a *AnimationSystem) HandleEvent(event Event) {
 	case EventEnemyHit:
 		// Enemy hit Claude - play hurt animation
 		newAnim = AnimHurt
+	case EventVictoryPose:
+		// Triumphant fist pump celebration
+		newAnim = AnimVictoryPose
+	case EventGitPush:
+		// Git push = SHIPPED! = Victory pose
+		newAnim = AnimVictoryPose
 
 	default:
 		return

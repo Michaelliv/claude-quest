@@ -1609,13 +1609,42 @@ func getHeadOffset(state *AnimationState) (float32, float32) {
 		}
 
 	case AnimThinking:
-		sway := []int{0, 0, 0, 1, 1, 1, 0, 0, 0, -1, -1, -1}
-		return float32(sway[f%len(sway)]), 0
+		// Updated 16-frame thinking with sway and bob
+		swayCurve := []int{0, 0, 1, 1, 1, 1, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0}
+		bobCurve := []int{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0}
+		return float32(swayCurve[f%len(swayCurve)]), float32(-bobCurve[f%len(bobCurve)])
 
 	case AnimWalk:
 		// bob is added to body position in spritegen (bob=1 means body down)
 		bobCurve := []int{0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0}
 		return 0, float32(bobCurve[f%len(bobCurve)])
+
+	case AnimVictoryPose:
+		// Victory pose fist pump - matches spritegen exactly
+		if f < 4 {
+			// Anticipation - coil down (oy+frame)
+			return 0, float32(f)
+		} else if f < 8 {
+			// Explosive rise
+			riseY := []int{2, -2, -6, -8}
+			return 0, float32(riseY[f-4])
+		} else if f < 14 {
+			// Peak pose with subtle bob
+			bob := []int{0, 1, 0, -1, 0, 1}
+			return 0, float32(-8 + bob[f-8])
+		} else if f < 18 {
+			// Settle down
+			settleY := []int{-6, -4, -2, 0}
+			return 0, float32(settleY[f-14])
+		} else {
+			// Final stance
+			bounceY := []int{1, 0}
+			idx := f - 18
+			if idx >= len(bounceY) {
+				idx = len(bounceY) - 1
+			}
+			return 0, float32(bounceY[idx])
+		}
 	}
 
 	return 0, 0
@@ -2103,6 +2132,11 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 		r.drawThoughtBubble(state)
 	}
 
+	// Draw SHIPPED! rainbow banner (git push celebration)
+	if state.ShippedActive {
+		r.drawShippedBanner(state)
+	}
+
 	// Draw thrown tools
 	r.drawThrownTools(state)
 
@@ -2464,6 +2498,85 @@ func (r *Renderer) drawThoughtBubble(state *GameState) {
 		y := bubbleY + padding + 2 + int32(i)*lineHeight
 		rl.DrawText(line, bubbleX+padding+2, y, fontSize, textColor)
 	}
+}
+
+// drawShippedBanner draws the epic rainbow "SHIPPED!" banner flying across the screen
+func (r *Renderer) drawShippedBanner(state *GameState) {
+	// Rainbow colors (brighter versions of indigo/violet)
+	rainbow := []rl.Color{
+		{255, 80, 80, 255},   // Red (slightly softened)
+		{255, 160, 50, 255},  // Orange
+		{255, 255, 80, 255},  // Yellow
+		{80, 255, 120, 255},  // Green
+		{80, 180, 255, 255},  // Blue
+		{140, 100, 255, 255}, // Indigo (brighter)
+		{200, 120, 255, 255}, // Violet (brighter)
+	}
+
+	text := "SHIPPED!"
+
+	// Helper to calculate position along the arc at a given time
+	getArcPos := func(t float32) (int32, int32) {
+		progress := t / 3.0
+		px := int32(-120 + progress*450)
+		arcHeight := float32(60)
+		arcProgress := (progress - 0.5) * 2
+		py := int32(100 - arcHeight*(1-arcProgress*arcProgress))
+		return px, py
+	}
+
+	// Draw smear trail - many smaller SHIPPED! following behind
+	// Longer tail with 32 trails
+	numTrails := 32
+	for trail := numTrails - 1; trail >= 0; trail-- {
+		// Each trail is slightly behind in time
+		trailTime := state.ShippedTimer - float32(trail)*0.03
+		if trailTime < 0 {
+			continue
+		}
+
+		trailX, trailY := getArcPos(trailTime)
+
+		// Size decreases for trails further back
+		scale := 1.0 - float32(trail)*0.025
+		if scale < 0.25 {
+			scale = 0.25
+		}
+		fontSize := int32(24 * scale)
+
+		// Alpha decreases for trails further back
+		alpha := uint8(255 - trail*7)
+		if alpha < 40 {
+			alpha = 40
+		}
+
+		// Rainbow alternates - colors cycle through based on time
+		colorIdx := (trail + int(state.ShippedTimer*8)) % len(rainbow)
+		c := rainbow[colorIdx]
+		c.A = alpha
+
+		// Draw the trail text (single color per trail)
+		rl.DrawText(text, trailX, trailY, fontSize, c)
+	}
+
+	// Get main text position
+	x, y := getArcPos(state.ShippedTimer)
+	fontSize := int32(24)
+
+	// Main text - white with black outline (pops against rainbow)
+	black := rl.Color{0, 0, 0, 255}
+	white := rl.Color{255, 255, 255, 255}
+
+	// Black outline
+	for dx := int32(-2); dx <= 2; dx++ {
+		for dy := int32(-2); dy <= 2; dy++ {
+			if dx != 0 || dy != 0 {
+				rl.DrawText(text, x+dx, y+dy, fontSize, black)
+			}
+		}
+	}
+	// White fill
+	rl.DrawText(text, x, y, fontSize, white)
 }
 
 // wordWrap splits text into lines that fit within maxWidth

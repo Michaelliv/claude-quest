@@ -112,6 +112,10 @@ type GameState struct {
 	ThoughtText  string  // Current thought text to display
 	ThoughtTimer float32 // Timer for thought display (6 seconds)
 	ThoughtFade  float32 // Fade in/out animation
+
+	// SHIPPED! rainbow effect (git push celebration)
+	ShippedActive bool    // Whether the SHIPPED effect is playing
+	ShippedTimer  float32 // Animation timer
 }
 
 // NewGameState creates a new game state
@@ -167,6 +171,16 @@ func (g *GameState) Update(dt float32) {
 		if g.CompactTimer > 2.0 {
 			g.CompactActive = false
 			g.CompactTimer = 0
+		}
+	}
+
+	// SHIPPED! rainbow effect animation
+	if g.ShippedActive {
+		g.ShippedTimer += dt
+		// Banner flies in an arc - extended to 4.5s so tail can exit smoothly
+		if g.ShippedTimer > 4.5 {
+			g.ShippedActive = false
+			g.ShippedTimer = 0
 		}
 	}
 
@@ -588,6 +602,11 @@ func (g *GameState) HandleEvent(event Event) {
 		} else {
 			g.SpawnEnemy(EnemyError)
 		}
+
+	case EventGitPush:
+		// SHIPPED! - trigger epic rainbow banner effect
+		g.ShippedActive = true
+		g.ShippedTimer = 0
 	}
 
 	// Check for low context - spawn LOW CTX enemy when below 20%
@@ -953,12 +972,13 @@ func runDemo() {
 		// Switch animation every 2 seconds
 		if animTimer >= animDuration {
 			animTimer = 0
-			currentAnim = (currentAnim + 1) % 8
+			currentAnim = (currentAnim + 1) % 9
 
 			// Map demo index to event type
 			eventTypes := []EventType{
 				EventIdle, EventSystemInit, EventReading, EventBash,
 				EventWriting, EventSuccess, EventError, EventThinking,
+				EventVictoryPose,
 			}
 			event := Event{Type: eventTypes[currentAnim]}
 
@@ -1064,6 +1084,15 @@ func runDemo() {
 		}
 		if rl.IsKeyPressed(rl.KeyL) {
 			gameState.SpawnEnemy(EnemyLowContext)
+		}
+		// Victory pose
+		if rl.IsKeyPressed(rl.KeyV) {
+			animations.HandleEvent(Event{Type: EventVictoryPose})
+		}
+		// SHIPPED! effect (git push celebration)
+		if rl.IsKeyPressed(rl.KeyS) {
+			gameState.HandleEvent(Event{Type: EventGitPush})
+			animations.HandleEvent(Event{Type: EventVictoryPose})
 		}
 
 		// Render

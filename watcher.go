@@ -34,6 +34,8 @@ const (
 	EventTodoUpdate    // TodoWrite tool used
 	EventAskUser       // AskUserQuestion tool
 	EventEnemyHit      // Enemy hit Claude (triggers hurt animation)
+	EventVictoryPose   // Triumphant fist pump (for epic moments like git push)
+	EventGitPush       // Git push detected - SHIPPED! rainbow effect
 )
 
 // TokenUsage tracks context window usage for mana bar
@@ -625,6 +627,16 @@ func (w *Watcher) parseToolUse(item ContentItem) *Event {
 
 	// Bash execution
 	case toolName == "bash":
+		// Check if this is a git push command
+		var bashInput struct {
+			Command string `json:"command"`
+		}
+		if err := json.Unmarshal(item.Input, &bashInput); err == nil {
+			cmd := strings.ToLower(bashInput.Command)
+			if strings.Contains(cmd, "git push") || strings.Contains(cmd, "git push") {
+				return &Event{Type: EventGitPush, Details: "SHIPPED!", ToolName: item.Name}
+			}
+		}
 		return &Event{Type: EventBash, Details: "Running command", ToolName: item.Name}
 
 	case toolName == "killshell":

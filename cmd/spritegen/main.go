@@ -13,13 +13,13 @@ type C = color.RGBA
 const (
 	frameWidth  = 32
 	frameHeight = 32
-	numAnims    = 9
+	numAnims    = 10
 	maxFrames   = 24
 )
 
 // Animation frame counts (must match animations.go) - doubled for smoothness
-// Idle, Enter, Casting, Attack, Writing, Victory, Hurt, Thinking, Walk
-var frameCounts = []int{16, 20, 16, 16, 16, 20, 16, 12, 16}
+// Idle, Enter, Casting, Attack, Writing, Victory, Hurt, Thinking, Walk, VictoryPose
+var frameCounts = []int{16, 20, 16, 16, 16, 20, 16, 16, 16, 20}
 
 // Claude's official color palette from Clawdachi
 var (
@@ -112,6 +112,9 @@ func drawFrame(img *image.RGBA, anim, frame int) {
 
 	case 8: // Walk - infinite walking cycle
 		drawClaudeWalk(img, offsetX, offsetY, frame)
+
+	case 9: // Victory Pose - triumphant fist pump celebration
+		drawClaudeVictoryPose(img, offsetX, offsetY, frame)
 	}
 }
 
@@ -803,41 +806,363 @@ func drawXEyes(img *image.RGBA, ox, oy int) {
 }
 
 func drawClaudeThinking(img *image.RGBA, ox, oy, frame int) {
-	// 12 frame thinking: subtle sway with growing thought bubble
-	sway := []int{0, 0, 0, 1, 1, 1, 0, 0, 0, -1, -1, -1}[frame]
-	drawClaudeBlob(img, ox+sway, oy, 0, false, false)
+	// 16 frame thinking: smooth sway with gradually appearing thought bubbles
+	// Sway curve - gentle sine-like motion
+	swayCurve := []int{0, 0, 1, 1, 1, 1, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0}
+	sway := swayCurve[frame]
 
-	// Eyes look up when thinking
-	eyeY := oy + 13
-	if frame > 2 {
-		// Shift pupils up
-		for dx := 0; dx < 3; dx++ {
-			img.Set(ox+11+sway+dx, eyeY+3, P) // clear bottom
-			img.Set(ox+18+sway+dx, eyeY+3, P)
+	// Subtle breathing/bob while thinking
+	bobCurve := []int{0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0}
+	bob := bobCurve[frame]
+
+	drawClaudeBlob(img, ox+sway, oy, bob, false, false)
+
+	// Eyes look up when thinking - thoughtful gaze
+	eyeY := oy + 13 - bob
+	// Clear bottom of eyes and shift pupils upward for "looking up" effect
+	for dx := 0; dx < 3; dx++ {
+		// Left eye - clear bottom, add darker pupil at top
+		img.Set(ox+11+sway+dx, eyeY+3, P)
+		// Right eye
+		img.Set(ox+18+sway+dx, eyeY+3, P)
+	}
+
+	// Thought bubble chain - smooth fade in with floating dots leading to bubble
+	// Frame progression: dots appear one by one, then bubble forms smoothly
+	dotY := oy + 8
+
+	// Dot 1 (closest to Claude) - appears frames 2+
+	if frame >= 2 {
+		// Gentle pulse effect
+		dotAlpha := frame >= 4
+		if dotAlpha {
+			img.Set(ox+23+sway/2, dotY+3, W)
+		} else {
+			// Smaller/dimmer initially
+			img.Set(ox+23+sway/2, dotY+3, C{230, 230, 230, 255})
 		}
 	}
 
-	// Thought bubble grows
-	dotY := oy + 6
-	bubbleSize := frame / 3 // 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3
+	// Dot 2 (middle) - appears frames 4+
+	if frame >= 4 {
+		dotAlpha := frame >= 6
+		if dotAlpha {
+			img.Set(ox+25, dotY+1, W)
+			img.Set(ox+26, dotY+1, W)
+		} else {
+			img.Set(ox+25, dotY+1, C{230, 230, 230, 255})
+		}
+	}
 
-	if bubbleSize >= 1 {
-		img.Set(ox+24, dotY+4, W)
-	}
-	if bubbleSize >= 2 {
-		img.Set(ox+26, dotY+2, W)
-		img.Set(ox+27, dotY+2, W)
-	}
-	if bubbleSize >= 3 {
-		// Full thought bubble
-		for dx := 0; dx < 4; dx++ {
-			img.Set(ox+28+dx, dotY-2, W)
-			img.Set(ox+28+dx, dotY-1, W)
-			img.Set(ox+28+dx, dotY, W)
-		}
-		// Question mark or lightbulb?
-		if frame%4 < 2 {
-			img.Set(ox+30, dotY-1, Y) // lightbulb hint
+	// Dot 3 (larger, closer to bubble) - appears frames 6+
+	if frame >= 6 {
+		dotAlpha := frame >= 8
+		if dotAlpha {
+			img.Set(ox+27, dotY-1, W)
+			img.Set(ox+28, dotY-1, W)
+			img.Set(ox+27, dotY, W)
+			img.Set(ox+28, dotY, W)
+		} else {
+			img.Set(ox+27, dotY-1, C{230, 230, 230, 255})
+			img.Set(ox+28, dotY-1, C{230, 230, 230, 255})
 		}
 	}
+
+	// Main thought bubble - forms gradually frames 8+
+	if frame >= 8 {
+		bubbleX := ox + 26
+		bubbleY := dotY - 6
+
+		// Bubble grows from center outward
+		bubblePhase := frame - 8 // 0-7
+
+		// Core of bubble (appears first)
+		if bubblePhase >= 0 {
+			img.Set(bubbleX+2, bubbleY+2, W)
+			img.Set(bubbleX+3, bubbleY+2, W)
+		}
+
+		// Bubble expands
+		if bubblePhase >= 1 {
+			img.Set(bubbleX+1, bubbleY+1, W)
+			img.Set(bubbleX+2, bubbleY+1, W)
+			img.Set(bubbleX+3, bubbleY+1, W)
+			img.Set(bubbleX+4, bubbleY+1, W)
+			img.Set(bubbleX+1, bubbleY+2, W)
+			img.Set(bubbleX+4, bubbleY+2, W)
+			img.Set(bubbleX+1, bubbleY+3, W)
+			img.Set(bubbleX+2, bubbleY+3, W)
+			img.Set(bubbleX+3, bubbleY+3, W)
+			img.Set(bubbleX+4, bubbleY+3, W)
+		}
+
+		// Full bubble with rounded corners
+		if bubblePhase >= 2 {
+			// Top row
+			img.Set(bubbleX+2, bubbleY, W)
+			img.Set(bubbleX+3, bubbleY, W)
+			// Bottom row
+			img.Set(bubbleX+2, bubbleY+4, W)
+			img.Set(bubbleX+3, bubbleY+4, W)
+			// Sides
+			img.Set(bubbleX, bubbleY+2, W)
+			img.Set(bubbleX+5, bubbleY+2, W)
+		}
+
+		// Lightbulb/idea icon inside bubble - pulses gently
+		if bubblePhase >= 3 {
+			// Lightbulb base
+			img.Set(bubbleX+2, bubbleY+3, Y)
+			img.Set(bubbleX+3, bubbleY+3, Y)
+			// Lightbulb glow - alternates for sparkle effect
+			if frame%4 < 2 {
+				img.Set(bubbleX+2, bubbleY+2, C{255, 255, 200, 255}) // bright yellow-white
+				img.Set(bubbleX+3, bubbleY+2, C{255, 255, 200, 255})
+				img.Set(bubbleX+2, bubbleY+1, Y)
+				img.Set(bubbleX+3, bubbleY+1, Y)
+			} else {
+				img.Set(bubbleX+2, bubbleY+2, Y)
+				img.Set(bubbleX+3, bubbleY+2, Y)
+				img.Set(bubbleX+2, bubbleY+1, C{255, 255, 200, 255})
+				img.Set(bubbleX+3, bubbleY+1, C{255, 255, 200, 255})
+			}
+			// Sparkle rays from lightbulb
+			if frame%3 == 0 {
+				img.Set(bubbleX+1, bubbleY+1, Y)
+			}
+			if frame%3 == 1 {
+				img.Set(bubbleX+4, bubbleY+1, Y)
+			}
+		}
+	}
+}
+
+// drawClaudeVictoryPose draws a 20-frame triumphant fist pump celebration
+// Detailed animation: anticipation, powerful fist raise, hold with sparkles, settle
+func drawClaudeVictoryPose(img *image.RGBA, ox, oy, frame int) {
+	// 20 frame victory pose:
+	// 0-3: Anticipation (coil down, building energy)
+	// 4-7: Explosive rise (both fists pump upward)
+	// 8-13: Peak pose (hold triumphant pose with sparkle effects)
+	// 14-17: Settle with pride (arms lower but proud stance)
+	// 18-19: Final proud idle
+
+	switch {
+	case frame < 4: // Anticipation - coil down with building energy
+		// Progressively squat down
+		squash := []int{0, -1, -2, -3}[frame]
+		drawBlobSquashed(img, ox, oy+frame, 1, squash)
+
+		// Arms pull back/down preparing for pump
+		armY := oy + 16 + frame
+		for dy := 0; dy < 3; dy++ {
+			img.Set(ox+3, armY+dy, S)
+			img.Set(ox+4, armY+dy, P)
+			img.Set(ox+27, armY+dy, P)
+			img.Set(ox+28, armY+dy, H)
+		}
+
+		// Building energy sparkles at feet
+		if frame >= 2 {
+			img.Set(ox+8, oy+26, Y)
+			img.Set(ox+23, oy+26, Y)
+		}
+		if frame == 3 {
+			img.Set(ox+6, oy+25, W)
+			img.Set(ox+25, oy+25, W)
+		}
+
+	case frame < 8: // Explosive rise - fists pump up!
+		// Rise up with stretch
+		riseY := []int{2, -2, -6, -8}[frame-4]
+		stretch := []int{3, 2, 1, 0}[frame-4]
+		drawBlobSquashed(img, ox, oy+riseY, 0, stretch)
+
+		// Arms thrust upward - fist pump motion
+		armRaise := []int{6, 10, 12, 13}[frame-4]
+		armY := oy + 16 + riseY - armRaise
+
+		// Left arm - fist up
+		for dy := 0; dy < 4; dy++ {
+			img.Set(ox+4, armY+dy, S)
+			img.Set(ox+5, armY+dy, P)
+			img.Set(ox+6, armY+dy, P)
+		}
+		// Left fist (small square)
+		img.Set(ox+4, armY-1, S)
+		img.Set(ox+5, armY-1, P)
+		img.Set(ox+6, armY-1, P)
+		img.Set(ox+5, armY-2, P)
+
+		// Right arm - fist up
+		for dy := 0; dy < 4; dy++ {
+			img.Set(ox+25, armY+dy, P)
+			img.Set(ox+26, armY+dy, P)
+			img.Set(ox+27, armY+dy, H)
+		}
+		// Right fist
+		img.Set(ox+25, armY-1, P)
+		img.Set(ox+26, armY-1, P)
+		img.Set(ox+27, armY-1, H)
+		img.Set(ox+26, armY-2, P)
+
+		// Motion lines during rise
+		if frame < 7 {
+			img.Set(ox+2, oy+riseY+18, S)
+			img.Set(ox+29, oy+riseY+18, H)
+		}
+
+		// Explosion sparkles
+		if frame >= 6 {
+			img.Set(ox+3, armY-3, Y)
+			img.Set(ox+28, armY-3, Y)
+		}
+
+	case frame < 14: // Peak pose - triumphant hold with effects
+		peakY := -8
+		// Subtle bob at peak
+		bob := []int{0, 1, 0, -1, 0, 1}[frame-8]
+		drawBlobSquashed(img, ox, oy+peakY+bob, 0, 0)
+
+		// Happy/proud eyes
+		drawProudEyes(img, ox, oy+peakY+bob)
+
+		// Arms held high in victory
+		armY := oy + peakY + bob + 3
+
+		// Left arm raised with fist
+		for dy := 0; dy < 5; dy++ {
+			img.Set(ox+4, armY+dy, S)
+			img.Set(ox+5, armY+dy, P)
+			img.Set(ox+6, armY+dy, P)
+		}
+		// Left fist
+		img.Set(ox+3, armY-1, S)
+		img.Set(ox+4, armY-1, S)
+		img.Set(ox+5, armY-1, P)
+		img.Set(ox+6, armY-1, P)
+		img.Set(ox+4, armY-2, P)
+		img.Set(ox+5, armY-2, P)
+
+		// Right arm raised with fist
+		for dy := 0; dy < 5; dy++ {
+			img.Set(ox+25, armY+dy, P)
+			img.Set(ox+26, armY+dy, P)
+			img.Set(ox+27, armY+dy, H)
+		}
+		// Right fist
+		img.Set(ox+25, armY-1, P)
+		img.Set(ox+26, armY-1, P)
+		img.Set(ox+27, armY-1, H)
+		img.Set(ox+28, armY-1, H)
+		img.Set(ox+26, armY-2, P)
+		img.Set(ox+27, armY-2, P)
+
+		// Rotating sparkle celebration around Claude
+		sparkPhase := frame - 8
+		sparklePositions := [][]int{
+			{1, -4}, {30, -4},   // top corners
+			{-1, 8}, {32, 8},    // mid sides
+			{16, -6},            // top center
+			{8, -2}, {24, -2},   // upper sides
+		}
+
+		for i, pos := range sparklePositions {
+			show := ((sparkPhase + i) % 3) != 0
+			if show {
+				c := Y
+				if (sparkPhase+i)%2 == 0 {
+					c = W
+				}
+				img.Set(ox+pos[0], oy+peakY+bob+pos[1], c)
+			}
+		}
+
+		// Big star burst above head at peak frames
+		if frame == 9 || frame == 10 {
+			// Central star
+			img.Set(ox+16, oy+peakY-8, W)
+			img.Set(ox+15, oy+peakY-8, Y)
+			img.Set(ox+17, oy+peakY-8, Y)
+			img.Set(ox+16, oy+peakY-9, Y)
+			img.Set(ox+16, oy+peakY-7, Y)
+			// Rays
+			img.Set(ox+14, oy+peakY-10, Y)
+			img.Set(ox+18, oy+peakY-10, Y)
+			img.Set(ox+13, oy+peakY-7, Y)
+			img.Set(ox+19, oy+peakY-7, Y)
+		}
+
+	case frame < 18: // Settle with pride - arms lower gracefully
+		settleY := []int{-6, -4, -2, 0}[frame-14]
+		drawBlobSquashed(img, ox, oy+settleY, 0, 0)
+
+		// Proud eyes linger
+		if frame < 16 {
+			drawProudEyes(img, ox, oy+settleY)
+		}
+
+		// Arms lowering but still confident
+		armLower := []int{3, 6, 9, 11}[frame-14]
+		armY := oy + settleY + 3 + armLower
+
+		// Left arm coming down
+		armHeight := 5 - (frame - 14)
+		if armHeight < 3 {
+			armHeight = 3
+		}
+		for dy := 0; dy < armHeight; dy++ {
+			img.Set(ox+4, armY+dy, S)
+			img.Set(ox+5, armY+dy, P)
+			img.Set(ox+6, armY+dy, P)
+		}
+
+		// Right arm coming down
+		for dy := 0; dy < armHeight; dy++ {
+			img.Set(ox+25, armY+dy, P)
+			img.Set(ox+26, armY+dy, P)
+			img.Set(ox+27, armY+dy, H)
+		}
+
+		// Lingering sparkles
+		if frame < 16 {
+			img.Set(ox+2, oy+settleY+4, Y)
+			img.Set(ox+29, oy+settleY+4, Y)
+		}
+
+	default: // Final proud stance
+		bounceY := []int{1, 0}[frame-18]
+		drawClaudeBlob(img, ox, oy+bounceY, 0, false, false)
+
+		// Satisfied expression
+		if frame == 18 {
+			drawProudEyes(img, ox, oy+bounceY)
+		}
+	}
+}
+
+// drawProudEyes draws confident/proud eyes (similar to happy but more intense)
+func drawProudEyes(img *image.RGBA, ox, oy int) {
+	eyeY := oy + 14
+	// Clear existing eyes
+	for dx := 0; dx < 3; dx++ {
+		for dy := 0; dy < 4; dy++ {
+			img.Set(ox+11+dx, eyeY+dy, P)
+			img.Set(ox+18+dx, eyeY+dy, P)
+		}
+	}
+	// Confident squint-smile ^_^ with slight intensity
+	// Left eye - upward arc
+	img.Set(ox+11, eyeY+2, O)
+	img.Set(ox+12, eyeY+1, O)
+	img.Set(ox+13, eyeY+2, O)
+	// Add slight gleam
+	img.Set(ox+12, eyeY, C{255, 255, 220, 255})
+
+	// Right eye - upward arc
+	img.Set(ox+18, eyeY+2, O)
+	img.Set(ox+19, eyeY+1, O)
+	img.Set(ox+20, eyeY+2, O)
+	// Add slight gleam
+	img.Set(ox+19, eyeY, C{255, 255, 220, 255})
 }

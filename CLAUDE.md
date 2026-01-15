@@ -83,3 +83,5 @@ npm package (`claude-quest`) runs a postinstall script (`scripts/install.js`) th
 - `←→` - Cycle values
 - `A` - Spawn mini agent (demo only)
 - `P` - Poof mini agent (demo only)
+- `V` - Victory pose (fist pump celebration)
+- `S` - SHIPPED! rainbow banner (git push effect)
