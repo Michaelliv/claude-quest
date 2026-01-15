@@ -973,98 +973,102 @@ func drawClaudeVictoryPose(img *image.RGBA, ox, oy, frame int) {
 		}
 
 	case frame < 8: // Explosive rise - fists pump up!
-		// Rise up with stretch
-		riseY := []int{2, -2, -6, -8}[frame-4]
+		// Rise up with stretch (reduced height to stay in frame)
+		riseY := []int{1, -1, -2, -3}[frame-4]
 		stretch := []int{3, 2, 1, 0}[frame-4]
-		drawBlobSquashed(img, ox, oy+riseY, 0, stretch)
+		bodyOY := oy + riseY
+		drawBlobSquashed(img, ox, bodyOY, 0, stretch)
 
-		// Arms thrust upward - fist pump motion
-		armRaise := []int{6, 10, 12, 13}[frame-4]
-		armY := oy + 16 + riseY - armRaise
+		// Arms extend from body (y=15+stretch) up to raised fist
+		// Body arm position varies with stretch
+		armBottom := bodyOY + 15 + stretch
+		armRaise := []int{2, 4, 5, 6}[frame-4] // How many pixels above body arm
+		armTop := armBottom - armRaise - 3      // Fist position
 
-		// Left arm - fist up
-		for dy := 0; dy < 4; dy++ {
-			img.Set(ox+4, armY+dy, S)
-			img.Set(ox+5, armY+dy, P)
-			img.Set(ox+6, armY+dy, P)
+		// Left arm - vertical from armTop to armBottom
+		for y := armTop; y <= armBottom; y++ {
+			img.Set(ox+4, y, S)
+			img.Set(ox+5, y, P)
+			img.Set(ox+6, y, P)
 		}
 		// Left fist (small square)
-		img.Set(ox+4, armY-1, S)
-		img.Set(ox+5, armY-1, P)
-		img.Set(ox+6, armY-1, P)
-		img.Set(ox+5, armY-2, P)
+		img.Set(ox+4, armTop-1, S)
+		img.Set(ox+5, armTop-1, P)
+		img.Set(ox+6, armTop-1, P)
 
-		// Right arm - fist up
-		for dy := 0; dy < 4; dy++ {
-			img.Set(ox+25, armY+dy, P)
-			img.Set(ox+26, armY+dy, P)
-			img.Set(ox+27, armY+dy, H)
+		// Right arm - vertical from armTop to armBottom
+		for y := armTop; y <= armBottom; y++ {
+			img.Set(ox+25, y, P)
+			img.Set(ox+26, y, P)
+			img.Set(ox+27, y, H)
 		}
 		// Right fist
-		img.Set(ox+25, armY-1, P)
-		img.Set(ox+26, armY-1, P)
-		img.Set(ox+27, armY-1, H)
-		img.Set(ox+26, armY-2, P)
+		img.Set(ox+25, armTop-1, P)
+		img.Set(ox+26, armTop-1, P)
+		img.Set(ox+27, armTop-1, H)
 
 		// Motion lines during rise
 		if frame < 7 {
-			img.Set(ox+2, oy+riseY+18, S)
-			img.Set(ox+29, oy+riseY+18, H)
+			img.Set(ox+2, bodyOY+20, S)
+			img.Set(ox+29, bodyOY+20, H)
 		}
 
-		// Explosion sparkles
+		// Explosion sparkles near fists
 		if frame >= 6 {
-			img.Set(ox+3, armY-3, Y)
-			img.Set(ox+28, armY-3, Y)
+			img.Set(ox+3, armTop, Y)
+			img.Set(ox+28, armTop, Y)
 		}
 
 	case frame < 14: // Peak pose - triumphant hold with effects
-		peakY := -8
+		peakY := -3 // Reduced from -8 to stay in frame
 		// Subtle bob at peak
 		bob := []int{0, 1, 0, -1, 0, 1}[frame-8]
-		drawBlobSquashed(img, ox, oy+peakY+bob, 0, 0)
+		bodyOY := oy + peakY + bob
+		drawBlobSquashed(img, ox, bodyOY, 0, 0)
 
 		// Happy/proud eyes
-		drawProudEyes(img, ox, oy+peakY+bob)
+		drawProudEyes(img, ox, bodyOY)
 
-		// Arms held high in victory
-		armY := oy + peakY + bob + 3
+		// Arms raised - extend from body arm position (y=15) up to fist
+		// Body arm stub is at bodyOY+15, arms extend upward 6 pixels
+		armBottom := bodyOY + 17 // Where arm meets body
+		armTop := bodyOY + 10    // Where fist is
 
-		// Left arm raised with fist
-		for dy := 0; dy < 5; dy++ {
-			img.Set(ox+4, armY+dy, S)
-			img.Set(ox+5, armY+dy, P)
-			img.Set(ox+6, armY+dy, P)
+		// Left arm - vertical from armTop to armBottom
+		for y := armTop; y <= armBottom; y++ {
+			img.Set(ox+4, y, S)
+			img.Set(ox+5, y, P)
+			img.Set(ox+6, y, P)
 		}
-		// Left fist
-		img.Set(ox+3, armY-1, S)
-		img.Set(ox+4, armY-1, S)
-		img.Set(ox+5, armY-1, P)
-		img.Set(ox+6, armY-1, P)
-		img.Set(ox+4, armY-2, P)
-		img.Set(ox+5, armY-2, P)
+		// Left fist at top
+		img.Set(ox+3, armTop-1, S)
+		img.Set(ox+4, armTop-1, S)
+		img.Set(ox+5, armTop-1, P)
+		img.Set(ox+6, armTop-1, P)
+		img.Set(ox+4, armTop, P)
+		img.Set(ox+5, armTop, P)
 
-		// Right arm raised with fist
-		for dy := 0; dy < 5; dy++ {
-			img.Set(ox+25, armY+dy, P)
-			img.Set(ox+26, armY+dy, P)
-			img.Set(ox+27, armY+dy, H)
+		// Right arm - vertical from armTop to armBottom
+		for y := armTop; y <= armBottom; y++ {
+			img.Set(ox+25, y, P)
+			img.Set(ox+26, y, P)
+			img.Set(ox+27, y, H)
 		}
-		// Right fist
-		img.Set(ox+25, armY-1, P)
-		img.Set(ox+26, armY-1, P)
-		img.Set(ox+27, armY-1, H)
-		img.Set(ox+28, armY-1, H)
-		img.Set(ox+26, armY-2, P)
-		img.Set(ox+27, armY-2, P)
+		// Right fist at top
+		img.Set(ox+25, armTop-1, P)
+		img.Set(ox+26, armTop-1, P)
+		img.Set(ox+27, armTop-1, H)
+		img.Set(ox+28, armTop-1, H)
+		img.Set(ox+26, armTop, P)
+		img.Set(ox+27, armTop, P)
 
 		// Rotating sparkle celebration around Claude
 		sparkPhase := frame - 8
 		sparklePositions := [][]int{
-			{1, -4}, {30, -4},   // top corners
-			{-1, 8}, {32, 8},    // mid sides
-			{16, -6},            // top center
-			{8, -2}, {24, -2},   // upper sides
+			{2, 8}, {29, 8},     // sides near arms
+			{0, 16}, {31, 16},   // mid sides
+			{16, 6},             // top center
+			{8, 10}, {24, 10},   // upper sides
 		}
 
 		for i, pos := range sparklePositions {
@@ -1074,27 +1078,21 @@ func drawClaudeVictoryPose(img *image.RGBA, ox, oy, frame int) {
 				if (sparkPhase+i)%2 == 0 {
 					c = W
 				}
-				img.Set(ox+pos[0], oy+peakY+bob+pos[1], c)
+				img.Set(ox+pos[0], oy+pos[1], c)
 			}
 		}
 
-		// Big star burst above head at peak frames
+		// Star burst above head at peak frames
 		if frame == 9 || frame == 10 {
-			// Central star
-			img.Set(ox+16, oy+peakY-8, W)
-			img.Set(ox+15, oy+peakY-8, Y)
-			img.Set(ox+17, oy+peakY-8, Y)
-			img.Set(ox+16, oy+peakY-9, Y)
-			img.Set(ox+16, oy+peakY-7, Y)
-			// Rays
-			img.Set(ox+14, oy+peakY-10, Y)
-			img.Set(ox+18, oy+peakY-10, Y)
-			img.Set(ox+13, oy+peakY-7, Y)
-			img.Set(ox+19, oy+peakY-7, Y)
+			img.Set(ox+16, bodyOY+6, W)
+			img.Set(ox+15, bodyOY+6, Y)
+			img.Set(ox+17, bodyOY+6, Y)
+			img.Set(ox+16, bodyOY+5, Y)
+			img.Set(ox+16, bodyOY+7, Y)
 		}
 
 	case frame < 18: // Settle with pride - arms lower gracefully
-		settleY := []int{-6, -4, -2, 0}[frame-14]
+		settleY := []int{-2, -1, 0, 0}[frame-14]
 		drawBlobSquashed(img, ox, oy+settleY, 0, 0)
 
 		// Proud eyes linger
@@ -1103,11 +1101,11 @@ func drawClaudeVictoryPose(img *image.RGBA, ox, oy, frame int) {
 		}
 
 		// Arms lowering but still confident
-		armLower := []int{3, 6, 9, 11}[frame-14]
-		armY := oy + settleY + 3 + armLower
+		armLower := []int{2, 5, 8, 10}[frame-14]
+		armY := oy + settleY + 5 + armLower
 
 		// Left arm coming down
-		armHeight := 5 - (frame - 14)
+		armHeight := 4 - (frame - 14)
 		if armHeight < 3 {
 			armHeight = 3
 		}
@@ -1126,8 +1124,8 @@ func drawClaudeVictoryPose(img *image.RGBA, ox, oy, frame int) {
 
 		// Lingering sparkles
 		if frame < 16 {
-			img.Set(ox+2, oy+settleY+4, Y)
-			img.Set(ox+29, oy+settleY+4, Y)
+			img.Set(ox+2, oy+settleY+8, Y)
+			img.Set(ox+29, oy+settleY+8, Y)
 		}
 
 	default: // Final proud stance

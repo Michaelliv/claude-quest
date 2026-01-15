@@ -1625,16 +1625,16 @@ func getHeadOffset(state *AnimationState) (float32, float32) {
 			// Anticipation - coil down (oy+frame)
 			return 0, float32(f)
 		} else if f < 8 {
-			// Explosive rise
-			riseY := []int{2, -2, -6, -8}
+			// Explosive rise (reduced height to stay in frame)
+			riseY := []int{1, -1, -2, -3}
 			return 0, float32(riseY[f-4])
 		} else if f < 14 {
-			// Peak pose with subtle bob
+			// Peak pose with subtle bob (peakY=-3)
 			bob := []int{0, 1, 0, -1, 0, 1}
-			return 0, float32(-8 + bob[f-8])
+			return 0, float32(-3 + bob[f-8])
 		} else if f < 18 {
 			// Settle down
-			settleY := []int{-6, -4, -2, 0}
+			settleY := []int{-2, -1, 0, 0}
 			return 0, float32(settleY[f-14])
 		} else {
 			// Final stance
