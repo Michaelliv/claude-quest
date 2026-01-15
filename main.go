@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -281,6 +285,7 @@ Usage:
   cq watch [dir]        Watch a specific directory's conversation
   cq replay <file>      Replay an existing conversation JSONL file
   cq demo               Cycle through all animations (demo mode)
+  cq doctor             Check if Claude Quest can run properly
 
 Options:
   -s, --speed <ms>      Replay speed in milliseconds (default: 200)
@@ -291,6 +296,263 @@ Examples:
   cq watch ~/Projects/myapp             # Watch specific project
   cq replay ~/.claude/projects/-Users-me-Projects-myapp/abc123.jsonl
   cq demo                               # See all animations`)
+}
+
+// runDoctor checks if all requirements for Claude Quest are met
+func runDoctor() {
+	fmt.Println("Claude Quest Doctor")
+	fmt.Println("===================")
+	fmt.Println()
+
+	allGood := true
+	home := os.Getenv("HOME")
+
+	// Check Claude Code installation
+	fmt.Println("Claude Code:")
+
+	claudeDir := filepath.Join(home, ".claude")
+	if _, err := os.Stat(claudeDir); err == nil {
+		fmt.Println("  [OK] ~/.claude/ exists")
+	} else {
+		fmt.Println("  [!!] ~/.claude/ not found - is Claude Code installed?")
+		allGood = false
+	}
+
+	projectsDir := filepath.Join(home, ".claude", "projects")
+	if _, err := os.Stat(projectsDir); err == nil {
+		fmt.Println("  [OK] ~/.claude/projects/ exists")
+
+		// Count project directories
+		entries, _ := os.ReadDir(projectsDir)
+		projectCount := 0
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "-") {
+				projectCount++
+			}
+		}
+		fmt.Printf("  [OK] Found %d project(s)\n", projectCount)
+	} else {
+		fmt.Println("  [!!] ~/.claude/projects/ not found")
+		allGood = false
+	}
+
+	// Check current project
+	fmt.Println()
+	fmt.Println("Current Project:")
+
+	cwd, _ := os.Getwd()
+	absPath, _ := filepath.Abs(cwd)
+	encoded := strings.ReplaceAll(absPath, "/", "-")
+	projectDir := filepath.Join(projectsDir, encoded)
+
+	fmt.Printf("  Path: %s\n", cwd)
+	fmt.Printf("  Encoded: %s\n", encoded)
+
+	if _, err := os.Stat(projectDir); err == nil {
+		fmt.Println("  [OK] Project directory exists")
+
+		// Count JSONL files
+		entries, _ := os.ReadDir(projectDir)
+		jsonlCount := 0
+		var latestFile string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") && !strings.HasPrefix(e.Name(), "agent-") {
+				jsonlCount++
+				latestFile = e.Name()
+			}
+		}
+		if jsonlCount > 0 {
+			fmt.Printf("  [OK] Found %d conversation file(s)\n", jsonlCount)
+			fmt.Printf("  [OK] Latest: %s\n", latestFile)
+
+			// Validate JSONL structure
+			latestPath := filepath.Join(projectDir, latestFile)
+			if valid, details := validateJSONL(latestPath); valid {
+				fmt.Println("  [OK] JSONL structure valid")
+				fmt.Printf("       %s\n", details)
+			} else {
+				fmt.Println("  [!!] JSONL structure invalid")
+				fmt.Printf("       %s\n", details)
+				allGood = false
+			}
+		} else {
+			fmt.Println("  [!!] No conversation files found")
+			allGood = false
+		}
+	} else {
+		fmt.Println("  [--] No conversations for this project yet")
+		fmt.Println("       (Run Claude Code here first)")
+	}
+
+	// Check assets
+	fmt.Println()
+	fmt.Println("Assets:")
+
+	assetChecks := []struct {
+		name string
+		path string
+	}{
+		{"Sprite sheet", "claude/spritesheet.png"},
+		{"Wizard hat", "accessories/hats/wizard.png"},
+		{"Party hat", "accessories/hats/party.png"},
+		{"Deal-with-it glasses", "accessories/faces/dealwithit.png"},
+	}
+
+	for _, check := range assetChecks {
+		assetPath := getAssetPathForDoctor(check.path)
+		if _, err := os.Stat(assetPath); err == nil {
+			fmt.Printf("  [OK] %s\n", check.name)
+		} else {
+			fmt.Printf("  [!!] %s not found\n", check.name)
+			fmt.Printf("       Looked in: %s\n", assetPath)
+			allGood = false
+		}
+	}
+
+	// Check optional user prefs
+	fmt.Println()
+	fmt.Println("User Config:")
+
+	prefsPath := filepath.Join(home, ".claude-quest-prefs.json")
+	if _, err := os.Stat(prefsPath); err == nil {
+		fmt.Println("  [OK] Preferences file exists")
+	} else {
+		fmt.Println("  [--] No preferences file (will use defaults)")
+	}
+
+	// Summary
+	fmt.Println()
+	fmt.Println("===================")
+	if allGood {
+		fmt.Println("All checks passed! Claude Quest should work.")
+	} else {
+		fmt.Println("Some issues found. See [!!] items above.")
+	}
+}
+
+// getAssetPathForDoctor is a copy of getAssetPath for the doctor command
+// (avoids raylib initialization issues)
+func getAssetPathForDoctor(relativePath string) string {
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exeDir = filepath.Dir(resolved)
+		}
+		npmAssetPath := filepath.Join(exeDir, "..", "assets", relativePath)
+		if _, err := os.Stat(npmAssetPath); err == nil {
+			return npmAssetPath
+		}
+		sameDirPath := filepath.Join(exeDir, "assets", relativePath)
+		if _, err := os.Stat(sameDirPath); err == nil {
+			return sameDirPath
+		}
+	}
+	return filepath.Join("assets", relativePath)
+}
+
+// validateJSONL checks if a JSONL file has the structure Claude Quest requires
+func validateJSONL(path string) (bool, string) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Sprintf("cannot open: %v", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+
+	// Requirements we check for
+	var (
+		hasValidJSON     bool
+		hasTypeField     bool
+		hasMessageRole   bool
+		hasContentArray  bool
+		hasToolUseType   bool
+		hasToolUseName   bool
+		linesChecked     int
+	)
+
+	for scanner.Scan() {
+		linesChecked++
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+
+		var msg struct {
+			Type    string `json:"type"`
+			Message struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+
+		if json.Unmarshal([]byte(line), &msg) == nil {
+			hasValidJSON = true
+
+			if msg.Type != "" {
+				hasTypeField = true
+			}
+			if msg.Message.Role != "" {
+				hasMessageRole = true
+			}
+
+			// Check content structure
+			if msg.Message.Content != nil {
+				var content []struct {
+					Type string `json:"type"`
+					Name string `json:"name,omitempty"`
+				}
+				if json.Unmarshal(msg.Message.Content, &content) == nil && len(content) > 0 {
+					hasContentArray = true
+					for _, c := range content {
+						if c.Type == "tool_use" {
+							hasToolUseType = true
+							if c.Name != "" {
+								hasToolUseName = true
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Stop once we've validated all requirements or checked enough lines
+		if hasValidJSON && hasTypeField && hasMessageRole && hasContentArray && hasToolUseName {
+			break
+		}
+		if linesChecked >= 100 {
+			break
+		}
+	}
+
+	// Check requirements
+	var missing []string
+
+	if !hasValidJSON {
+		missing = append(missing, "valid JSON")
+	}
+	if !hasTypeField {
+		missing = append(missing, "type field")
+	}
+	if !hasMessageRole {
+		missing = append(missing, "message.role")
+	}
+	if !hasContentArray {
+		missing = append(missing, "message.content array")
+	}
+	if !hasToolUseType {
+		missing = append(missing, "tool_use content type")
+	}
+	if !hasToolUseName {
+		missing = append(missing, "tool_use.name field")
+	}
+
+	if len(missing) > 0 {
+		return false, "missing: " + strings.Join(missing, ", ")
+	}
+
+	return true, "all required fields present"
 }
 
 var animationNames = []string{
@@ -471,6 +733,10 @@ func main() {
 
 		case "demo":
 			runDemo()
+			os.Exit(0)
+
+		case "doctor":
+			runDoctor()
 			os.Exit(0)
 
 		case "watch":
