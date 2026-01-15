@@ -52,6 +52,11 @@ const (
 	spriteFrameHeight = 32
 	spriteMaxFrames   = 12
 	claudeScale       = 2 // Draw Claude 2x bigger
+
+	// Mini Claude sprites
+	miniFrameWidth  = 16
+	miniFrameHeight = 16
+	miniMaxFrames   = 12
 )
 
 // Particle represents a visual effect particle
@@ -66,11 +71,13 @@ type Particle struct {
 
 // Renderer handles all drawing operations
 type Renderer struct {
-	config      *Config
-	background  rl.Texture2D
-	spriteSheet rl.Texture2D
-	particles   []Particle
-	hasSprites  bool
+	config          *Config
+	background      rl.Texture2D
+	spriteSheet     rl.Texture2D
+	miniSpriteSheet rl.Texture2D
+	particles       []Particle
+	hasSprites      bool
+	hasMiniSprites  bool
 
 	// Accessories
 	hats        []rl.Texture2D
@@ -90,6 +97,10 @@ type Renderer struct {
 	// Biome system
 	currentBiome int
 	biomeTimer   float32
+
+	// Picker visibility
+	pickerExpanded bool
+	pickerAnim     float32 // 0.0 = collapsed, 1.0 = expanded
 }
 
 // NewRenderer creates a new renderer with loaded assets
@@ -109,6 +120,14 @@ func NewRenderer(config *Config) *Renderer {
 		fmt.Println("Loaded sprite sheet from:", spritePath)
 	} else {
 		fmt.Println("No sprite sheet found, using placeholder graphics")
+	}
+
+	// Try to load mini sprite sheet
+	miniSpritePath := getAssetPath("claude/mini_spritesheet.png")
+	if _, err := os.Stat(miniSpritePath); err == nil {
+		r.miniSpriteSheet = rl.LoadTexture(miniSpritePath)
+		r.hasMiniSprites = true
+		fmt.Println("Loaded mini sprite sheet from:", miniSpritePath)
 	}
 
 	// Load all accessories
@@ -228,6 +247,32 @@ func (r *Renderer) ToggleWalkMode() {
 // IsWalkMode returns whether walk mode is active
 func (r *Renderer) IsWalkMode() bool {
 	return r.walkMode
+}
+
+// TogglePicker expands/collapses the accessory picker
+func (r *Renderer) TogglePicker() {
+	r.pickerExpanded = !r.pickerExpanded
+}
+
+// IsPickerExpanded returns whether the picker is visible
+func (r *Renderer) IsPickerExpanded() bool {
+	return r.pickerExpanded
+}
+
+// UpdatePickerAnim animates the picker expand/collapse
+func (r *Renderer) UpdatePickerAnim(dt float32) {
+	speed := float32(6.0) // Animation speed
+	if r.pickerExpanded {
+		r.pickerAnim += dt * speed
+		if r.pickerAnim > 1.0 {
+			r.pickerAnim = 1.0
+		}
+	} else {
+		r.pickerAnim -= dt * speed
+		if r.pickerAnim < 0.0 {
+			r.pickerAnim = 0.0
+		}
+	}
 }
 
 // GetCurrentModeName returns a fun name for the current mode
@@ -1841,6 +1886,35 @@ func (r *Renderer) drawParticles() {
 
 // DrawAccessoryPicker draws a clean, centered accessory picker panel
 func (r *Renderer) DrawAccessoryPicker() {
+	// Layout constants (smaller text/spacing)
+	rowH := int32(9)
+	padding := int32(2)
+	labelW := int32(22)
+	arrowW := int32(5)
+	valueW := int32(45)
+	gap := int32(2)
+
+	// Calculate full panel size (3 rows)
+	panelW := padding + labelW + gap + arrowW + valueW + arrowW + padding
+
+	// Collapsed bar height (aligned with mana bar)
+	collapsedH := int32(12)
+
+	// Full panel height = collapsed header + 3 rows
+	fullPanelH := collapsedH + rowH + gap + rowH + gap + rowH + padding
+
+	// Animate between collapsed and full panel
+	// Use easeOutQuad for smooth animation
+	t := r.pickerAnim
+	eased := t * (2 - t) // easeOutQuad
+
+	// Calculate animated height
+	panelH := int32(float32(collapsedH) + eased*float32(fullPanelH-collapsedH))
+
+	// Position in bottom-left corner (same Y as mana bar: screenHeight - 14)
+	panelX := int32(4)
+	panelY := screenHeight - panelH - 3
+
 	// Colors
 	panelBg := rl.Color{R: 20, G: 18, B: 30, A: 230}
 	panelBorder := rl.Color{R: 60, G: 55, B: 80, A: 255}
@@ -1851,28 +1925,35 @@ func (r *Renderer) DrawAccessoryPicker() {
 	arrowDim := rl.Color{R: 80, G: 75, B: 100, A: 255}
 	arrowActive := rl.Color{R: 180, G: 175, B: 200, A: 255}
 
-	// Layout constants - smaller
-	rowH := int32(10)
-	padding := int32(3)
-	labelW := int32(24)
-	arrowW := int32(5)
-	valueW := int32(50)
-	gap := int32(3)
-
-	// Calculate panel size (3 rows now)
-	panelW := padding + labelW + gap + arrowW + valueW + arrowW + padding
-	panelH := padding + rowH + gap + rowH + gap + rowH + padding
-
-	// Position in bottom-left corner
-	panelX := int32(4)
-	panelY := screenHeight - panelH - 4
-
-	// Draw panel
+	// Always draw panel background
 	rl.DrawRectangle(panelX-1, panelY-1, panelW+2, panelH+2, panelBorder)
 	rl.DrawRectangle(panelX, panelY, panelW, panelH, panelBg)
 
-	// === ROW 1: HAT ===
-	rowY := panelY + padding
+	// Draw "Tab ^" hint (changes to "Tab v" when expanded)
+	hintAlpha := uint8(200)
+	hintColor := rl.Color{R: 100, G: 95, B: 120, A: hintAlpha}
+	if r.pickerExpanded {
+		rl.DrawText("Tab v", panelX+padding, panelY+2, 8, hintColor)
+	} else {
+		rl.DrawText("Tab ^", panelX+padding, panelY+2, 8, hintColor)
+	}
+
+	// Don't draw panel contents if mostly collapsed
+	if r.pickerAnim < 0.1 {
+		return
+	}
+
+	// Fade in content alpha
+	contentAlpha := uint8(eased * 255)
+	labelDim.A = contentAlpha
+	labelActive.A = contentAlpha
+	valueDim.A = contentAlpha
+	valueActive.A = contentAlpha
+	arrowDim.A = contentAlpha
+	arrowActive.A = contentAlpha
+
+	// === ROW 1: HAT === (starts below the "Tab" hint)
+	rowY := panelY + collapsedH
 	x := panelX + padding
 
 	// Determine colors based on active row
@@ -1908,7 +1989,7 @@ func (r *Renderer) DrawAccessoryPicker() {
 	rl.DrawText(">", x, rowY+2, 8, hatArrowColor)
 
 	// === ROW 2: FACE ===
-	rowY = panelY + padding + rowH + gap
+	rowY = panelY + collapsedH + rowH + gap
 	x = panelX + padding
 
 	// Determine colors based on active row
@@ -1944,7 +2025,7 @@ func (r *Renderer) DrawAccessoryPicker() {
 	rl.DrawText(">", x, rowY+2, 8, faceArrowColor)
 
 	// === ROW 3: MODE ===
-	rowY = panelY + padding + rowH + gap + rowH + gap
+	rowY = panelY + collapsedH + rowH + gap + rowH + gap
 	x = panelX + padding
 
 	// Determine colors based on active row
@@ -2006,6 +2087,9 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	// Draw thrown tools
 	r.drawThrownTools(state)
 
+	// Draw mini agents (subagent mini Claudes)
+	r.drawMiniAgents(state)
+
 	// Draw think hard effects
 	if state.ThinkHardActive {
 		r.drawThinkHardEffect(state)
@@ -2051,6 +2135,64 @@ func (r *Renderer) drawThrownTools(state *GameState) {
 			rl.DrawRectangle(x-3, y+3, 2, 2, trailColor)
 			rl.DrawRectangle(x-6, y+4, 2, 2, trailColor)
 		}
+	}
+}
+
+// drawMiniAgents renders all active mini Claudes (subagents)
+func (r *Renderer) drawMiniAgents(state *GameState) {
+	if !r.hasMiniSprites {
+		// Fallback: draw colored rectangles with names
+		for _, agent := range state.MiniAgents {
+			x := int32(agent.X) - 8
+			y := int32(agent.Y) - 16
+
+			// Simple colored box
+			bodyColor := rl.Color{R: 218, G: 165, B: 140, A: 255} // Peach
+			rl.DrawRectangle(x, y, 16, 16, bodyColor)
+
+			// Draw name below
+			nameColor := rl.Color{R: 200, G: 180, B: 160, A: 255}
+			textWidth := rl.MeasureText(agent.Name, 6)
+			nameX := x + 8 - textWidth/2
+			rl.DrawText(agent.Name, nameX, y+18, 6, nameColor)
+		}
+		return
+	}
+
+	// Draw each mini agent
+	for _, agent := range state.MiniAgents {
+		// Calculate source rectangle from mini sprite sheet
+		frameX := float32(agent.Frame * miniFrameWidth)
+		frameY := float32(int(agent.Animation) * miniFrameHeight)
+
+		sourceRec := rl.Rectangle{
+			X:      frameX,
+			Y:      frameY,
+			Width:  miniFrameWidth,
+			Height: miniFrameHeight,
+		}
+
+		// Position - center the sprite on the agent position
+		destRec := rl.Rectangle{
+			X:      agent.X - float32(miniFrameWidth/2),
+			Y:      agent.Y - float32(miniFrameHeight),
+			Width:  miniFrameWidth,
+			Height: miniFrameHeight,
+		}
+
+		rl.DrawTexturePro(r.miniSpriteSheet, sourceRec, destRec, rl.Vector2{}, 0, rl.White)
+
+		// Draw agent name below the sprite
+		nameColor := rl.Color{R: 200, G: 180, B: 160, A: 255}
+		shadowColor := rl.Color{R: 0, G: 0, B: 0, A: 150}
+		textWidth := rl.MeasureText(agent.Name, 6)
+		nameX := int32(agent.X) - textWidth/2
+		nameY := int32(agent.Y) + 2
+
+		// Shadow
+		rl.DrawText(agent.Name, nameX+1, nameY+1, 6, shadowColor)
+		// Name text
+		rl.DrawText(agent.Name, nameX, nameY, 6, nameColor)
 	}
 }
 
@@ -2137,11 +2279,11 @@ func wordWrap(text string, fontSize int32, maxWidth int32) []string {
 
 // drawManaBar renders the context window usage as a mana bar
 func (r *Renderer) drawManaBar(state *GameState) {
-	// Position in bottom right, next to accessory picker
-	barX := int32(100)
-	barY := int32(screenHeight - 12)
-	barWidth := int32(screenWidth - 105)
-	barHeight := int32(8)
+	// Position to the right of the picker (aligned at same height)
+	barHeight := int32(10)
+	barX := int32(120) // Leave room for MANA label at barX-30 = 90
+	barY := int32(screenHeight - barHeight - 4)
+	barWidth := int32(screenWidth - barX - 5)
 
 	// Background
 	bgColor := rl.Color{R: 20, G: 18, B: 30, A: 230}
@@ -2149,26 +2291,27 @@ func (r *Renderer) drawManaBar(state *GameState) {
 	rl.DrawRectangle(barX-1, barY-1, barWidth+2, barHeight+2, borderColor)
 	rl.DrawRectangle(barX, barY, barWidth, barHeight, bgColor)
 
-	// Calculate fill
-	fillRatio := state.ManaDisplay / float32(state.ManaMax)
-	if fillRatio > 1 {
-		fillRatio = 1
+	// Calculate fill (mana drains as tokens are used)
+	usedRatio := state.ManaDisplay / float32(state.ManaMax)
+	if usedRatio > 1 {
+		usedRatio = 1
 	}
-	fillWidth := int32(float32(barWidth-2) * fillRatio)
+	remainingRatio := 1.0 - usedRatio
+	fillWidth := int32(float32(barWidth-2) * remainingRatio)
 
-	// Color based on usage
+	// Color based on remaining mana
 	var fillColor rl.Color
-	if fillRatio < 0.5 {
-		// Blue - safe
+	if remainingRatio > 0.5 {
+		// Blue - plenty left
 		fillColor = rl.Color{R: 80, G: 120, B: 200, A: 255}
-	} else if fillRatio < 0.75 {
+	} else if remainingRatio > 0.25 {
 		// Yellow - caution
 		fillColor = rl.Color{R: 200, G: 180, B: 80, A: 255}
-	} else if fillRatio < 0.9 {
+	} else if remainingRatio > 0.1 {
 		// Orange - warning
 		fillColor = rl.Color{R: 220, G: 140, B: 60, A: 255}
 	} else {
-		// Red - danger
+		// Red - danger, almost empty
 		fillColor = rl.Color{R: 200, G: 80, B: 80, A: 255}
 	}
 
@@ -2181,12 +2324,14 @@ func (r *Renderer) drawManaBar(state *GameState) {
 	labelColor := rl.Color{R: 120, G: 115, B: 140, A: 255}
 	rl.DrawText("MANA", barX-30, barY, 8, labelColor)
 
-	// Draw token count
-	if state.ManaTotal > 0 {
-		tokenText := fmt.Sprintf("%dk", state.ManaTotal/1000)
-		textWidth := rl.MeasureText(tokenText, 8)
-		rl.DrawText(tokenText, barX+barWidth-textWidth-2, barY, 8, rl.Color{R: 160, G: 155, B: 180, A: 255})
+	// Draw remaining token count
+	remaining := state.ManaMax - int(state.ManaDisplay)
+	if remaining < 0 {
+		remaining = 0
 	}
+	tokenText := fmt.Sprintf("%dk", remaining/1000)
+	textWidth := rl.MeasureText(tokenText, 8)
+	rl.DrawText(tokenText, barX+barWidth-textWidth-2, barY+1, 8, rl.Color{R: 160, G: 155, B: 180, A: 255})
 }
 
 // drawThinkHardEffect renders firework-style particle effects

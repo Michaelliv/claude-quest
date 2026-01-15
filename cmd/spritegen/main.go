@@ -66,6 +66,9 @@ func main() {
 
 	// Generate accessories and effects
 	generateAccessories()
+
+	// Generate mini Claude for subagents
+	generateMiniClaude()
 }
 
 func drawFrame(img *image.RGBA, anim, frame int) {

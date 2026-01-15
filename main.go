@@ -30,6 +30,28 @@ type ThrownTool struct {
 	Color   uint32 // Packed RGBA
 }
 
+// MiniAnimType represents mini Claude animation types
+type MiniAnimType int
+
+const (
+	MiniAnimSpawn MiniAnimType = iota
+	MiniAnimIdle
+	MiniAnimWalk
+	MiniAnimPoof
+)
+
+// MiniAgent represents a mini Claude spawned for a subagent
+type MiniAgent struct {
+	ID        string       // Unique agent ID
+	Name      string       // Agent type name to display
+	X, Y      float32      // Position (landing spot)
+	TargetX   float32      // Target X for landing
+	Animation MiniAnimType // Current animation
+	Frame     int          // Current frame
+	Timer     float32      // Animation timer
+	SpawnVY   float32      // Vertical velocity during spawn jump
+}
+
 // GameState tracks UI state for quest text, mana bar, todos
 type GameState struct {
 	// Quest display
@@ -58,6 +80,9 @@ type GameState struct {
 
 	// Thrown tools effect
 	ThrownTools []ThrownTool
+
+	// Mini agents (subagents displayed as mini Claudes)
+	MiniAgents []MiniAgent
 }
 
 // NewGameState creates a new game state
@@ -139,6 +164,76 @@ func (g *GameState) Update(dt float32) {
 		}
 	}
 	g.ThrownTools = alive
+
+	// Update mini agents
+	g.updateMiniAgents(dt)
+}
+
+// Mini Claude animation frame counts: Spawn=8, Idle=8, Walk=8, Poof=6
+var miniFrameCounts = []int{8, 8, 8, 6}
+
+// updateMiniAgents updates all mini agent animations
+func (g *GameState) updateMiniAgents(dt float32) {
+	frameDuration := float32(0.08) // Slightly slower animation for mini
+
+	aliveAgents := g.MiniAgents[:0]
+	for i := range g.MiniAgents {
+		m := &g.MiniAgents[i]
+		m.Timer += dt
+
+		// Advance frame
+		if m.Timer >= frameDuration {
+			m.Timer -= frameDuration
+			m.Frame++
+
+			// Check if animation completed
+			maxFrames := miniFrameCounts[int(m.Animation)]
+			if m.Frame >= maxFrames {
+				m.Frame = 0
+
+				switch m.Animation {
+				case MiniAnimSpawn:
+					// Spawn complete - go to idle or walk randomly
+					if randFloat() > 0.5 {
+						m.Animation = MiniAnimIdle
+					} else {
+						m.Animation = MiniAnimWalk
+					}
+				case MiniAnimPoof:
+					// Poof complete - remove agent
+					continue // Don't add to alive list
+				case MiniAnimIdle, MiniAnimWalk:
+					// Loop - occasionally switch between idle/walk
+					if randFloat() > 0.9 {
+						if m.Animation == MiniAnimIdle {
+							m.Animation = MiniAnimWalk
+						} else {
+							m.Animation = MiniAnimIdle
+						}
+					}
+				}
+			}
+		}
+
+		// Update position during spawn animation (jumping arc)
+		if m.Animation == MiniAnimSpawn {
+			// Move toward target X
+			dx := m.TargetX - m.X
+			if dx > 0.5 || dx < -0.5 {
+				m.X += dx * dt * 3
+			}
+			// Arc motion - use frame to determine Y offset
+			// Frames 0-3: going up, 4-7: coming down
+			if m.Frame < 4 {
+				m.Y = 165 - float32(m.Frame)*8 // Rise
+			} else {
+				m.Y = 165 - float32(7-m.Frame)*8 // Fall
+			}
+		}
+
+		aliveAgents = append(aliveAgents, *m)
+	}
+	g.MiniAgents = aliveAgents
 }
 
 // ThrowTool creates a thrown tool effect with random direction
@@ -178,6 +273,64 @@ var randSeed uint32 = 12345
 func randFloat() float32 {
 	randSeed = randSeed*1103515245 + 12345
 	return float32(randSeed&0x7FFFFFFF) / float32(0x7FFFFFFF)
+}
+
+// SpawnMiniAgent creates a new mini Claude for a subagent
+func (g *GameState) SpawnMiniAgent(agentType string) {
+	// Generate unique ID
+	id := fmt.Sprintf("agent-%d", len(g.MiniAgents)+1)
+
+	// Start position: at big Claude's feet
+	startX := float32(screenWidth / 2)
+	startY := float32(165) // Ground level
+
+	// Target position: random spot to left or right of big Claude
+	// Spread out based on how many agents already exist
+	offset := float32(40 + len(g.MiniAgents)*25) // 40-90+ pixels away
+	if randFloat() > 0.5 {
+		offset = -offset // Go left
+	}
+	targetX := startX + offset
+
+	// Clamp to screen bounds (leave some margin)
+	if targetX < 30 {
+		targetX = 30
+	} else if targetX > screenWidth-30 {
+		targetX = screenWidth - 30
+	}
+
+	mini := MiniAgent{
+		ID:        id,
+		Name:      agentType,
+		X:         startX,
+		Y:         startY,
+		TargetX:   targetX,
+		Animation: MiniAnimSpawn,
+		Frame:     0,
+		Timer:     0,
+	}
+	g.MiniAgents = append(g.MiniAgents, mini)
+}
+
+// PoofMiniAgent triggers the poof animation for an agent by ID
+func (g *GameState) PoofMiniAgent(agentID string) {
+	for i := range g.MiniAgents {
+		if g.MiniAgents[i].ID == agentID || agentID == "" {
+			// If no specific ID, poof the oldest agent
+			g.MiniAgents[i].Animation = MiniAnimPoof
+			g.MiniAgents[i].Frame = 0
+			g.MiniAgents[i].Timer = 0
+			if agentID != "" {
+				return
+			}
+		}
+	}
+	// If no ID given and agents exist, poof the first one
+	if agentID == "" && len(g.MiniAgents) > 0 {
+		g.MiniAgents[0].Animation = MiniAnimPoof
+		g.MiniAgents[0].Frame = 0
+		g.MiniAgents[0].Timer = 0
+	}
 }
 
 // Tool colors (packed RGBA)
@@ -252,6 +405,14 @@ func (g *GameState) HandleEvent(event Event) {
 		if event.TodoItems != nil {
 			g.Todos = event.TodoItems
 		}
+
+	case EventSpawnAgent:
+		// Extract agent type from details (format: "Agent: typename")
+		agentType := event.Details
+		if len(agentType) > 7 && agentType[:7] == "Agent: " {
+			agentType = agentType[7:]
+		}
+		g.SpawnMiniAgent(agentType)
 	}
 }
 
@@ -562,8 +723,9 @@ var animationNames = []string{
 
 func runDemo() {
 	fmt.Println("Demo mode - cycling through all animations")
-	fmt.Println("Keys: Q=quest, M=mana, C=compact, W=walk mode")
+	fmt.Println("Keys: Q=quest, M=mana, C=compact, W=walk mode, Tab=picker")
 	fmt.Println("Think: 1=think, 2=think hard, 3=think harder, 4=ULTRATHINK")
+	fmt.Println("Agents: A=spawn mini agent, P=poof mini agent")
 
 	// Enable resizable window
 	rl.SetConfigFlags(rl.FlagWindowResizable)
@@ -631,6 +793,7 @@ func runDemo() {
 		animations.Update(dt)
 		gameState.Update(dt)
 		renderer.UpdateScroll(dt)
+		renderer.UpdatePickerAnim(dt)
 
 		// Handle keyboard input for accessories
 		if rl.IsKeyPressed(rl.KeyUp) {
@@ -643,6 +806,10 @@ func runDemo() {
 		if rl.IsKeyPressed(rl.KeyW) {
 			renderer.ToggleWalkMode()
 			animations.SetWalkMode(renderer.IsWalkMode())
+		}
+		// Toggle picker visibility
+		if rl.IsKeyPressed(rl.KeyTab) {
+			renderer.TogglePicker()
 		}
 		if rl.IsKeyPressed(rl.KeyLeft) {
 			renderer.CycleActive(-1)
@@ -690,6 +857,18 @@ func runDemo() {
 			// Compact effect
 			gameState.HandleEvent(Event{Type: EventCompact})
 			animations.HandleEvent(Event{Type: EventCompact})
+		}
+		// Mini agent demo triggers
+		if rl.IsKeyPressed(rl.KeyA) {
+			// Spawn a mini agent
+			agentTypes := []string{"Explore", "Plan", "Bash", "claude-code-guide"}
+			agentType := agentTypes[int(randFloat()*float32(len(agentTypes)))]
+			gameState.HandleEvent(Event{Type: EventSpawnAgent, Details: "Agent: " + agentType})
+			animations.HandleEvent(Event{Type: EventSpawnAgent})
+		}
+		if rl.IsKeyPressed(rl.KeyP) {
+			// Poof a mini agent
+			gameState.PoofMiniAgent("")
 		}
 
 		// Render
@@ -837,6 +1016,9 @@ func main() {
 			renderer.UpdateScroll(dt)
 		}
 
+		// Update picker animation
+		renderer.UpdatePickerAnim(dt)
+
 		// Handle keyboard input for accessories
 		// Up/Down = switch row, Left/Right = cycle value
 		if rl.IsKeyPressed(rl.KeyUp) {
@@ -857,6 +1039,10 @@ func main() {
 		if rl.IsKeyPressed(rl.KeyW) {
 			renderer.ToggleWalkMode()
 			animations.SetWalkMode(renderer.IsWalkMode())
+		}
+		// Toggle picker visibility with Tab
+		if rl.IsKeyPressed(rl.KeyTab) {
+			renderer.TogglePicker()
 		}
 
 		// Render to texture at native resolution
