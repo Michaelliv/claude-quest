@@ -36,3 +36,4 @@ Thumbs.db
 # Debug/temp
 *.log
 tmp/
+.beads/
