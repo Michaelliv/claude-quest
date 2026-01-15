@@ -52,6 +52,26 @@ type MiniAgent struct {
 	SpawnVY   float32      // Vertical velocity during spawn jump
 }
 
+// EnemyType represents different enemy sprites
+type EnemyType int
+
+const (
+	EnemyBug EnemyType = iota
+	EnemyError
+	EnemyLowContext
+)
+
+// FlyingEnemy represents an enemy flying toward Claude
+type FlyingEnemy struct {
+	Type    EnemyType
+	X, Y    float32 // Current position
+	VX, VY  float32 // Velocity (VX negative = moving left, VY affected by gravity)
+	Frame   int     // Animation frame
+	Timer   float32 // Animation timer
+	Hit     bool    // Has it hit Claude?
+	Impact  float32 // Impact effect timer (> 0 means showing impact)
+}
+
 // GameState tracks UI state for quest text, mana bar, todos
 type GameState struct {
 	// Quest display
@@ -83,6 +103,10 @@ type GameState struct {
 
 	// Mini agents (subagents displayed as mini Claudes)
 	MiniAgents []MiniAgent
+
+	// Flying enemies (attack Claude on errors)
+	FlyingEnemies []FlyingEnemy
+	PendingHurt   bool // Set when enemy hits, triggers hurt animation
 }
 
 // NewGameState creates a new game state
@@ -167,6 +191,9 @@ func (g *GameState) Update(dt float32) {
 
 	// Update mini agents
 	g.updateMiniAgents(dt)
+
+	// Update flying enemies
+	g.updateFlyingEnemies(dt)
 }
 
 // Mini Claude animation frame counts: Spawn=8, Idle=8, Walk=8, Poof=6
@@ -234,6 +261,109 @@ func (g *GameState) updateMiniAgents(dt float32) {
 		aliveAgents = append(aliveAgents, *m)
 	}
 	g.MiniAgents = aliveAgents
+}
+
+// Enemy animation frame counts: Bug=4, Error=4, LowContext=4
+const enemyFrameCount = 4
+
+// updateFlyingEnemies updates all flying enemies
+func (g *GameState) updateFlyingEnemies(dt float32) {
+	frameDuration := float32(0.1)  // Animation speed
+	claudeX := float32(screenWidth / 2)
+	claudeY := float32(screenHeight/2 + 10) // Claude's center
+	gravity := float32(120)        // Gravity strength
+
+	aliveEnemies := g.FlyingEnemies[:0]
+	for i := range g.FlyingEnemies {
+		e := &g.FlyingEnemies[i]
+
+		// Animate
+		e.Timer += dt
+		if e.Timer >= frameDuration {
+			e.Timer -= frameDuration
+			e.Frame = (e.Frame + 1) % enemyFrameCount
+		}
+
+		// Update impact effect
+		if e.Impact > 0 {
+			e.Impact -= dt
+			if e.Impact <= 0 {
+				// Impact done, trigger hurt
+				g.PendingHurt = true
+			}
+		}
+
+		// Move with gravity arc
+		if !e.Hit {
+			e.X += e.VX * dt
+			e.Y += e.VY * dt
+			e.VY += gravity * dt // Apply gravity
+
+			// Check if hit Claude (within hitbox)
+			dx := e.X - claudeX
+			dy := e.Y - claudeY
+			if dx < 30 && dx > -30 && dy < 30 && dy > -30 {
+				e.Hit = true
+				e.Impact = 0.3 // Show impact for 0.3 seconds
+				e.VX = 0
+				e.VY = 0
+			}
+
+			// Remove if off screen bottom
+			if e.Y > screenHeight+50 {
+				continue
+			}
+		} else {
+			// After hit, fade out
+			if e.Impact <= 0 {
+				continue // Remove after impact done
+			}
+		}
+
+		aliveEnemies = append(aliveEnemies, *e)
+	}
+	g.FlyingEnemies = aliveEnemies
+}
+
+// SpawnEnemy creates a flying enemy that attacks Claude
+func (g *GameState) SpawnEnemy(enemyType EnemyType) {
+	// Start from right side of screen at varied heights
+	startX := float32(screenWidth + 30)
+
+	// Random starting height: top, middle, or bottom third
+	heightZone := randFloat()
+	var startY float32
+	var initialVY float32
+
+	if heightZone < 0.33 {
+		// High throw - starts high, arcs down
+		startY = 20 + randFloat()*40
+		initialVY = 20 + randFloat()*30
+	} else if heightZone < 0.66 {
+		// Middle throw - starts mid, slight arc
+		startY = 60 + randFloat()*40
+		initialVY = -20 + randFloat()*40
+	} else {
+		// Low throw - starts low, arcs up then down
+		startY = 120 + randFloat()*40
+		initialVY = -60 - randFloat()*40
+	}
+
+	// Horizontal speed toward Claude
+	vx := float32(-140 - randFloat()*60) // Speed: 140-200 pixels/sec
+
+	enemy := FlyingEnemy{
+		Type:   enemyType,
+		X:      startX,
+		Y:      startY,
+		VX:     vx,
+		VY:     initialVY,
+		Frame:  0,
+		Timer:  0,
+		Hit:    false,
+		Impact: 0,
+	}
+	g.FlyingEnemies = append(g.FlyingEnemies, enemy)
 }
 
 // ThrowTool creates a thrown tool effect with random direction
@@ -413,6 +543,23 @@ func (g *GameState) HandleEvent(event Event) {
 			agentType = agentType[7:]
 		}
 		g.SpawnMiniAgent(agentType)
+
+	case EventError:
+		// Spawn a bug or ERROR enemy
+		if randFloat() > 0.5 {
+			g.SpawnEnemy(EnemyBug)
+		} else {
+			g.SpawnEnemy(EnemyError)
+		}
+	}
+
+	// Check for low context - spawn LOW CTX enemy when below 20%
+	if g.ManaTotal > 0 {
+		usedRatio := float32(g.ManaTotal) / float32(g.ManaMax)
+		if usedRatio > 0.8 && randFloat() > 0.9 {
+			// Only spawn occasionally when context is very low
+			g.SpawnEnemy(EnemyLowContext)
+		}
 	}
 }
 
@@ -726,6 +873,7 @@ func runDemo() {
 	fmt.Println("Keys: Q=quest, M=mana, C=compact, W=walk mode, Tab=picker")
 	fmt.Println("Think: 1=think, 2=think hard, 3=think harder, 4=ULTRATHINK")
 	fmt.Println("Agents: A=spawn mini agent, P=poof mini agent")
+	fmt.Println("Enemies: B=bug, E=error, L=low context")
 
 	// Enable resizable window
 	rl.SetConfigFlags(rl.FlagWindowResizable)
@@ -870,6 +1018,16 @@ func runDemo() {
 			// Poof a mini agent
 			gameState.PoofMiniAgent("")
 		}
+		// Enemy spawn keys
+		if rl.IsKeyPressed(rl.KeyB) {
+			gameState.SpawnEnemy(EnemyBug)
+		}
+		if rl.IsKeyPressed(rl.KeyE) {
+			gameState.SpawnEnemy(EnemyError)
+		}
+		if rl.IsKeyPressed(rl.KeyL) {
+			gameState.SpawnEnemy(EnemyLowContext)
+		}
 
 		// Render
 		rl.BeginTextureMode(target)
@@ -1010,6 +1168,12 @@ func main() {
 
 		// Sync activity state to animation system
 		animations.SetActive(gameState.IsActive)
+
+		// Check if an enemy hit Claude - trigger hurt animation
+		if gameState.PendingHurt {
+			gameState.PendingHurt = false
+			animations.HandleEvent(Event{Type: EventError})
+		}
 
 		// Only scroll when there's activity (events coming in)
 		if gameState.IsActive {

@@ -57,6 +57,10 @@ const (
 	miniFrameWidth  = 16
 	miniFrameHeight = 16
 	miniMaxFrames   = 12
+
+	// Enemy sprites
+	enemyFrameWidth  = 32
+	enemyFrameHeight = 16
 )
 
 // Particle represents a visual effect particle
@@ -71,13 +75,15 @@ type Particle struct {
 
 // Renderer handles all drawing operations
 type Renderer struct {
-	config          *Config
-	background      rl.Texture2D
-	spriteSheet     rl.Texture2D
-	miniSpriteSheet rl.Texture2D
-	particles       []Particle
-	hasSprites      bool
-	hasMiniSprites  bool
+	config           *Config
+	background       rl.Texture2D
+	spriteSheet      rl.Texture2D
+	miniSpriteSheet  rl.Texture2D
+	enemySpriteSheet rl.Texture2D
+	particles        []Particle
+	hasSprites       bool
+	hasMiniSprites   bool
+	hasEnemySprites  bool
 
 	// Accessories
 	hats        []rl.Texture2D
@@ -128,6 +134,14 @@ func NewRenderer(config *Config) *Renderer {
 		r.miniSpriteSheet = rl.LoadTexture(miniSpritePath)
 		r.hasMiniSprites = true
 		fmt.Println("Loaded mini sprite sheet from:", miniSpritePath)
+	}
+
+	// Try to load enemy sprite sheet
+	enemySpritePath := getAssetPath("enemies/enemy_spritesheet.png")
+	if _, err := os.Stat(enemySpritePath); err == nil {
+		r.enemySpriteSheet = rl.LoadTexture(enemySpritePath)
+		r.hasEnemySprites = true
+		fmt.Println("Loaded enemy sprite sheet from:", enemySpritePath)
 	}
 
 	// Load all accessories
@@ -2087,6 +2101,9 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	// Draw thrown tools
 	r.drawThrownTools(state)
 
+	// Draw flying enemies (before mini agents so they appear behind)
+	r.drawFlyingEnemies(state)
+
 	// Draw mini agents (subagent mini Claudes)
 	r.drawMiniAgents(state)
 
@@ -2136,6 +2153,94 @@ func (r *Renderer) drawThrownTools(state *GameState) {
 			rl.DrawRectangle(x-6, y+4, 2, 2, trailColor)
 		}
 	}
+}
+
+// drawFlyingEnemies renders enemies flying toward Claude
+func (r *Renderer) drawFlyingEnemies(state *GameState) {
+	for _, enemy := range state.FlyingEnemies {
+		// Show impact effect
+		if enemy.Hit && enemy.Impact > 0 {
+			r.drawImpactEffect(enemy.X, enemy.Y, enemy.Impact, enemy.Type)
+			continue // Don't draw enemy sprite during impact
+		}
+
+		alpha := uint8(255)
+
+		if r.hasEnemySprites {
+			// Calculate source rectangle from enemy sprite sheet
+			frameX := float32(enemy.Frame * enemyFrameWidth)
+			frameY := float32(int(enemy.Type) * enemyFrameHeight)
+
+			sourceRec := rl.Rectangle{
+				X:      frameX,
+				Y:      frameY,
+				Width:  enemyFrameWidth,
+				Height: enemyFrameHeight,
+			}
+
+			// Position - center the sprite on the enemy position
+			destRec := rl.Rectangle{
+				X:      enemy.X - float32(enemyFrameWidth/2),
+				Y:      enemy.Y - float32(enemyFrameHeight/2),
+				Width:  enemyFrameWidth,
+				Height: enemyFrameHeight,
+			}
+
+			tint := rl.Color{R: 255, G: 255, B: 255, A: alpha}
+			rl.DrawTexturePro(r.enemySpriteSheet, sourceRec, destRec, rl.Vector2{}, 0, tint)
+		} else {
+			// Fallback: draw colored rectangle
+			var color rl.Color
+			switch enemy.Type {
+			case EnemyBug:
+				color = rl.Color{R: 34, G: 139, B: 34, A: alpha} // Green
+			case EnemyError:
+				color = rl.Color{R: 255, G: 51, B: 51, A: alpha} // Red
+			case EnemyLowContext:
+				color = rl.Color{R: 255, G: 204, B: 0, A: alpha} // Yellow
+			}
+			rl.DrawRectangle(int32(enemy.X)-16, int32(enemy.Y)-8, 32, 16, color)
+		}
+	}
+}
+
+// drawImpactEffect renders the impact burst when an enemy hits Claude
+func (r *Renderer) drawImpactEffect(x, y, timer float32, enemyType EnemyType) {
+	// Impact expands outward
+	progress := 1.0 - (timer / 0.3) // 0 to 1 as timer goes from 0.3 to 0
+	size := 10 + progress*20        // Grows from 10 to 30
+
+	// Color based on enemy type
+	var color rl.Color
+	switch enemyType {
+	case EnemyBug:
+		color = rl.Color{R: 100, G: 200, B: 100, A: uint8(200 * (1 - progress))} // Green
+	case EnemyError:
+		color = rl.Color{R: 255, G: 100, B: 100, A: uint8(200 * (1 - progress))} // Red
+	case EnemyLowContext:
+		color = rl.Color{R: 255, G: 220, B: 100, A: uint8(200 * (1 - progress))} // Yellow
+	}
+
+	// Draw expanding ring
+	cx := int32(x)
+	cy := int32(y)
+	halfSize := int32(size / 2)
+
+	// Outer ring
+	rl.DrawRectangleLines(cx-halfSize, cy-halfSize, int32(size), int32(size), color)
+
+	// Inner burst lines (star pattern)
+	for i := 0; i < 8; i++ {
+		angle := float32(i) * 3.14159 / 4
+		dx := int32(simpleCosF(float64(angle)) * float64(size/2))
+		dy := int32(simpleSinF(float64(angle)) * float64(size/2))
+		rl.DrawLine(cx, cy, cx+dx, cy+dy, color)
+	}
+
+	// Center flash
+	flashAlpha := uint8(255 * (1 - progress))
+	flashColor := rl.Color{R: 255, G: 255, B: 255, A: flashAlpha}
+	rl.DrawRectangle(cx-3, cy-3, 6, 6, flashColor)
 }
 
 // drawMiniAgents renders all active mini Claudes (subagents)

@@ -69,6 +69,9 @@ func main() {
 
 	// Generate mini Claude for subagents
 	generateMiniClaude()
+
+	// Generate enemy sprites
+	generateEnemies()
 }
 
 func drawFrame(img *image.RGBA, anim, frame int) {
