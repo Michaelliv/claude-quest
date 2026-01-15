@@ -53,7 +53,7 @@ Every Claude Code action becomes an animation:
 - Kingdom Road (castles, windmills)
 
 ### The Mana Bar
-Shows your context window usage. Watch it fill as your conversation grows. When Claude compacts the conversation, it resets. Satisfying.
+Shows your remaining context window. Starts full at 200k tokens and drains as your conversation grows. When Claude compacts, it refills. Satisfying.
 
 ### Customization
 Hats and accessories. Wizard hat, crown, deal-with-it sunglasses. Because why not.
@@ -87,7 +87,7 @@ cq demo         # See all animations (no Claude Code needed)
 cq watch ~/dir  # Watch specific project
 ```
 
-**Controls:** `W` toggle walk mode, `↑↓←→` customize accessories
+**Controls:** `W` toggle walk mode, `Tab` toggle picker, `↑↓←→` customize accessories
 
 ---
 

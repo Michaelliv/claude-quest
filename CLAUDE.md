@@ -10,6 +10,7 @@ go build -o cq .              # Build binary for current platform
 ./cq                          # Watch current project's Claude conversations
 ./cq watch ~/path/to/project  # Watch specific project
 ./cq replay <jsonl-file>      # Replay a conversation file
+./cq doctor                   # Diagnostics - check paths and JSONL structure
 ```
 
 Cross-platform builds use goreleaser (triggered by git tags `v*`):
@@ -25,17 +26,19 @@ Claude Quest is a pixel-art RPG companion that visualizes Claude Code operations
 
 **watcher.go** - File watcher that monitors `~/.claude/projects/[encoded-path]/*.jsonl`. Parses JSON lines, extracts tool usage events, and emits typed `Event` structs through a channel. Supports live tailing and replay modes.
 
-**main.go** - Entry point with CLI parsing (`demo`, `watch`, `replay` subcommands). Contains the main game loop that distributes watcher events to the animation system and game state.
+**main.go** - Entry point with CLI parsing (`demo`, `watch`, `replay`, `doctor` subcommands). Contains the main game loop, `GameState` (mana, todos, thrown tools, mini agents), and `MiniAgent` tracking for subagents.
 
 **animations.go** - State machine managing 9 animation types: Idle, Enter, Casting, Attack, Writing, Victory, Hurt, Thinking, Walk. Each animation has frame timing and transition rules.
 
-**renderer.go** - All drawing logic using Raylib. Handles sprite sheets, parallax backgrounds, UI elements (quest text, mana bar, todo list), particle effects, and biome cycling. Renders at 320x200 native resolution (DOS-era aesthetic), scaled up to window size.
+**renderer.go** - All drawing logic using Raylib. Handles sprite sheets (main 32x32 and mini 16x16), parallax backgrounds, UI elements (quest text, mana bar, collapsible picker), particle effects, and biome cycling. Renders at 320x200 native resolution (DOS-era aesthetic), scaled up to window size.
 
 **config.go** - User preferences (accessories, volume, background) stored at `~/.claude-quest-prefs.json`.
 
 **pixelart.go** - Color palette definitions and pixel manipulation utilities.
 
 **sprites/** - Generated Go files containing procedural sprite data for faces and outfits.
+
+**cmd/spritegen/** - Sprite sheet generator. Creates `spritesheet.png` (main Claude, 32x32) and `mini_spritesheet.png` (mini Claude for subagents, 16x16). Run with `go run ./cmd/spritegen/`.
 
 ### Event Flow
 
@@ -53,6 +56,7 @@ Claude Quest is a pixel-art RPG companion that visualizes Claude Code operations
 | success results | Victory |
 | errors | Hurt |
 | extended thinking | Thinking + particles |
+| Task (subagent) | Mini Claude spawns and jumps out |
 
 ### Build Requirements
 
@@ -66,6 +70,16 @@ npm package (`claude-quest`) runs a postinstall script (`scripts/install.js`) th
 ## Key Constants
 
 - Screen: 320x200 pixels, scaled 2x for sprites
-- Animations: 32x32 pixel frames, max 12 frames per animation
-- Mana bar max: 200,000 tokens (Opus context window)
+- Main Claude: 32x32 pixel frames, max 12 frames per animation
+- Mini Claude: 16x16 pixel frames (for subagents)
+- Mana bar: 200,000 tokens max (drains as context is used)
 - Biome cycle: 20 seconds per biome in Quest mode
+
+## Demo Controls
+
+- `W` - Toggle walk mode (Vibin' / Quest!)
+- `Tab` - Toggle accessory picker
+- `↑↓` - Switch picker row (HAT/FACE/MODE)
+- `←→` - Cycle values
+- `A` - Spawn mini agent (demo only)
+- `P` - Poof mini agent (demo only)
