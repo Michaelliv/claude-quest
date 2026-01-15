@@ -22,6 +22,31 @@ func getPrefsPath() string {
 	return filepath.Join(home, ".claude-quest-prefs.json")
 }
 
+// getAssetPath returns the path to an asset file, checking both relative to
+// the executable (for npm installs) and relative to cwd (for development)
+func getAssetPath(relativePath string) string {
+	// First try relative to executable (npm install location)
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		// Check if we're in a symlinked bin directory (npm global install)
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			exeDir = filepath.Dir(resolved)
+		}
+		// npm installs put assets in ../assets relative to bin/cq
+		npmAssetPath := filepath.Join(exeDir, "..", "assets", relativePath)
+		if _, err := os.Stat(npmAssetPath); err == nil {
+			return npmAssetPath
+		}
+		// Also check same directory as binary
+		sameDirPath := filepath.Join(exeDir, "assets", relativePath)
+		if _, err := os.Stat(sameDirPath); err == nil {
+			return sameDirPath
+		}
+	}
+	// Fall back to relative path (development)
+	return filepath.Join("assets", relativePath)
+}
+
 const (
 	spriteFrameWidth  = 32
 	spriteFrameHeight = 32
@@ -77,10 +102,11 @@ func NewRenderer(config *Config) *Renderer {
 	}
 
 	// Try to load sprite sheet
-	if _, err := os.Stat("assets/claude/spritesheet.png"); err == nil {
-		r.spriteSheet = rl.LoadTexture("assets/claude/spritesheet.png")
+	spritePath := getAssetPath("claude/spritesheet.png")
+	if _, err := os.Stat(spritePath); err == nil {
+		r.spriteSheet = rl.LoadTexture(spritePath)
 		r.hasSprites = true
-		fmt.Println("Loaded sprite sheet")
+		fmt.Println("Loaded sprite sheet from:", spritePath)
 	} else {
 		fmt.Println("No sprite sheet found, using placeholder graphics")
 	}
@@ -100,7 +126,7 @@ func (r *Renderer) loadHats() {
 	hatFiles := []string{"wizard", "party", "crown", "tophat", "propeller"}
 
 	for _, name := range hatFiles {
-		path := fmt.Sprintf("assets/accessories/hats/%s.png", name)
+		path := getAssetPath(fmt.Sprintf("accessories/hats/%s.png", name))
 		if _, err := os.Stat(path); err == nil {
 			tex := rl.LoadTexture(path)
 			r.hats = append(r.hats, tex)
@@ -137,7 +163,7 @@ func (r *Renderer) loadFaces() {
 	faceFiles := []string{"dealwithit", "mustache", "monocle", "borat"}
 
 	for _, name := range faceFiles {
-		path := fmt.Sprintf("assets/accessories/faces/%s.png", name)
+		path := getAssetPath(fmt.Sprintf("accessories/faces/%s.png", name))
 		if _, err := os.Stat(path); err == nil {
 			tex := rl.LoadTexture(path)
 			r.faces = append(r.faces, tex)

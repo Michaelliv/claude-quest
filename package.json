@@ -1,6 +1,6 @@
 {
   "name": "claude-quest",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pixel-art RPG companion for Claude Code. Watch Claude cast spells, battle bugs, and quest through beautiful biomes as you code together.",
   "bin": {
     "cq": "bin/cq",
