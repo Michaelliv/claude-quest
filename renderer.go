@@ -1897,8 +1897,8 @@ func (r *Renderer) DrawAccessoryPicker() {
 	// Calculate full panel size (3 rows)
 	panelW := padding + labelW + gap + arrowW + valueW + arrowW + padding
 
-	// Collapsed bar height (aligned with mana bar)
-	collapsedH := int32(12)
+	// Collapsed bar height (same as mana bar: 10px)
+	collapsedH := int32(10)
 
 	// Full panel height = collapsed header + 3 rows
 	fullPanelH := collapsedH + rowH + gap + rowH + gap + rowH + padding
@@ -1911,9 +1911,9 @@ func (r *Renderer) DrawAccessoryPicker() {
 	// Calculate animated height
 	panelH := int32(float32(collapsedH) + eased*float32(fullPanelH-collapsedH))
 
-	// Position in bottom-left corner (same Y as mana bar: screenHeight - 14)
+	// Position in bottom-left corner (same as mana bar: screenHeight - height - 4)
 	panelX := int32(4)
-	panelY := screenHeight - panelH - 3
+	panelY := screenHeight - panelH - 4
 
 	// Colors
 	panelBg := rl.Color{R: 20, G: 18, B: 30, A: 230}
@@ -1933,9 +1933,9 @@ func (r *Renderer) DrawAccessoryPicker() {
 	hintAlpha := uint8(200)
 	hintColor := rl.Color{R: 100, G: 95, B: 120, A: hintAlpha}
 	if r.pickerExpanded {
-		rl.DrawText("Tab v", panelX+padding, panelY+2, 8, hintColor)
+		rl.DrawText("Tab v", panelX+padding, panelY+1, 8, hintColor)
 	} else {
-		rl.DrawText("Tab ^", panelX+padding, panelY+2, 8, hintColor)
+		rl.DrawText("Tab ^", panelX+padding, panelY+1, 8, hintColor)
 	}
 
 	// Don't draw panel contents if mostly collapsed
