@@ -46,7 +46,8 @@ type AnimationSystem struct {
 	state         *AnimationState
 	frameDuration float32 // Seconds per frame
 	animLengths   map[AnimationType]int
-	walkMode      bool // When true, default to walk instead of idle
+	walkMode      bool // When true and active, default to walk instead of idle
+	isActive      bool // When true, there's recent activity (events coming in)
 }
 
 // NewAnimationSystem creates a new animation system
@@ -161,8 +162,8 @@ func (a *AnimationSystem) onAnimationComplete() {
 		a.state.Queue = a.state.Queue[1:]
 		a.state.Frame = 0
 	} else {
-		// Return to walk or idle based on mode
-		if a.walkMode {
+		// Return to walk if in active walk mode, otherwise idle
+		if a.walkMode && a.isActive {
 			a.state.CurrentAnim = AnimWalk
 		} else {
 			a.state.CurrentAnim = AnimIdle
@@ -171,16 +172,24 @@ func (a *AnimationSystem) onAnimationComplete() {
 	}
 }
 
-// SetWalkMode enables/disables walk mode
+// SetWalkMode enables/disables walk mode (Quest mode)
 func (a *AnimationSystem) SetWalkMode(enabled bool) {
 	a.walkMode = enabled
-	if enabled && a.state.CurrentAnim == AnimIdle {
-		// Switch to walk immediately
-		a.state.CurrentAnim = AnimWalk
-		a.state.Frame = 0
-	} else if !enabled && a.state.CurrentAnim == AnimWalk {
-		// Switch back to idle
+}
+
+// SetActive sets whether there's current activity (events coming in)
+func (a *AnimationSystem) SetActive(active bool) {
+	wasActive := a.isActive
+	a.isActive = active
+
+	// If becoming inactive while walking, switch to idle
+	if wasActive && !active && a.state.CurrentAnim == AnimWalk {
 		a.state.CurrentAnim = AnimIdle
+		a.state.Frame = 0
+	}
+	// If becoming active in walk mode while idle, switch to walk
+	if !wasActive && active && a.walkMode && a.state.CurrentAnim == AnimIdle {
+		a.state.CurrentAnim = AnimWalk
 		a.state.Frame = 0
 	}
 }

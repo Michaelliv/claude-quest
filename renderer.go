@@ -2003,6 +2003,9 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	// Draw mana bar at bottom
 	r.drawManaBar(state)
 
+	// Draw thrown tools
+	r.drawThrownTools(state)
+
 	// Draw think hard effects
 	if state.ThinkHardActive {
 		r.drawThinkHardEffect(state)
@@ -2011,6 +2014,43 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	// Draw compact/rest effects
 	if state.CompactActive {
 		r.drawCompactEffect(state)
+	}
+}
+
+// drawThrownTools renders tool names flying through the air
+func (r *Renderer) drawThrownTools(state *GameState) {
+	for _, tool := range state.ThrownTools {
+		// Fade out near end of life
+		alpha := float32(1.0)
+		if tool.Life > tool.MaxLife*0.7 {
+			alpha = 1.0 - (tool.Life-tool.MaxLife*0.7)/(tool.MaxLife*0.3)
+		}
+
+		// Unpack color
+		cr := uint8((tool.Color >> 24) & 0xFF)
+		cg := uint8((tool.Color >> 16) & 0xFF)
+		cb := uint8((tool.Color >> 8) & 0xFF)
+		color := rl.Color{R: cr, G: cg, B: cb, A: uint8(alpha * 255)}
+		shadowColor := rl.Color{R: 0, G: 0, B: 0, A: uint8(alpha * 180)}
+
+		// Slight rotation based on velocity (tilted in direction of travel)
+		// For now just draw with shadow for depth
+		x := int32(tool.X)
+		y := int32(tool.Y)
+		fontSize := int32(8)
+
+		// Shadow
+		rl.DrawText(tool.Text, x+1, y+1, fontSize, shadowColor)
+		// Main text
+		rl.DrawText(tool.Text, x, y, fontSize, color)
+
+		// Small trail particles
+		if tool.Life < tool.MaxLife*0.5 {
+			trailColor := color
+			trailColor.A = uint8(alpha * 100)
+			rl.DrawRectangle(x-3, y+3, 2, 2, trailColor)
+			rl.DrawRectangle(x-6, y+4, 2, 2, trailColor)
+		}
 	}
 }
 

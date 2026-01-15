@@ -16,6 +16,16 @@ const (
 	maxTokens    = 200000 // Opus 4.5 context window
 )
 
+// ThrownTool represents a tool name being thrown forward
+type ThrownTool struct {
+	Text    string
+	X, Y    float32
+	VX, VY  float32
+	Life    float32
+	MaxLife float32
+	Color   uint32 // Packed RGBA
+}
+
 // GameState tracks UI state for quest text, mana bar, todos
 type GameState struct {
 	// Quest display
@@ -37,6 +47,13 @@ type GameState struct {
 	ThinkLevel      ThinkLevel
 	CompactActive   bool
 	CompactTimer    float32
+
+	// Activity tracking - for walk/scroll during activity only
+	LastActivityTime float32
+	IsActive         bool
+
+	// Thrown tools effect
+	ThrownTools []ThrownTool
 }
 
 // NewGameState creates a new game state
@@ -94,13 +111,114 @@ func (g *GameState) Update(dt float32) {
 			g.CompactTimer = 0
 		}
 	}
+
+	// Activity timeout - go inactive after 60 seconds of no events
+	// (keeps walking during thinking pauses)
+	if g.IsActive {
+		g.LastActivityTime += dt
+		if g.LastActivityTime > 60.0 {
+			g.IsActive = false
+		}
+	}
+
+	// Update thrown tools
+	alive := g.ThrownTools[:0]
+	for i := range g.ThrownTools {
+		t := &g.ThrownTools[i]
+		t.Life += dt
+		if t.Life < t.MaxLife {
+			// Move forward and arc with strong gravity
+			t.X += t.VX * dt
+			t.Y += t.VY * dt
+			t.VY += 180 * dt // Stronger gravity for bigger arc
+			alive = append(alive, *t)
+		}
+	}
+	g.ThrownTools = alive
 }
+
+// ThrowTool creates a thrown tool effect with random direction
+func (g *GameState) ThrowTool(toolName string, color uint32) {
+	// Start from Claude's position with slight random offset
+	startX := float32(screenWidth/2) + (randFloat()*20 - 10)
+	startY := float32(screenHeight/2-10) + (randFloat()*10 - 5)
+
+	// Random angle: spread in all upward directions
+	// -160 to -20 degrees (full upper arc, both left and right)
+	angle := (-20 - randFloat()*140) * 3.14159 / 180 // Convert to radians
+	// Randomly flip to go forward (right) or backward (left)
+	if randFloat() > 0.5 {
+		angle = -angle // Flip to right side
+	}
+	speed := float32(110 + randFloat()*50) // 110-160 speed (faster for bigger arc)
+
+	baseVX := speed * float32(simpleCosF(float64(angle)))
+	baseVY := speed * float32(simpleSinF(float64(angle)))
+
+	tool := ThrownTool{
+		Text:    toolName,
+		X:       startX,
+		Y:       startY,
+		VX:      baseVX,
+		VY:      baseVY,
+		Life:    0,
+		MaxLife: 1.5,
+		Color:   color,
+	}
+	g.ThrownTools = append(g.ThrownTools, tool)
+}
+
+// Simple random float 0-1
+var randSeed uint32 = 12345
+
+func randFloat() float32 {
+	randSeed = randSeed*1103515245 + 12345
+	return float32(randSeed&0x7FFFFFFF) / float32(0x7FFFFFFF)
+}
+
+// Tool colors (packed RGBA)
+const (
+	colorBash    = 0xFF6B6BFF // Red - attack
+	colorRead    = 0x6BB5FFFF // Blue - magic
+	colorWrite   = 0x6BFF6BFF // Green - creation
+	colorWeb     = 0xFFD93DFF // Yellow - search
+	colorAgent   = 0xDA6BFFFF // Purple - summon
+	colorDefault = 0xAAAAAAFF // Gray
+)
 
 // HandleEvent updates game state based on events
 func (g *GameState) HandleEvent(event Event) {
+	// Mark activity for any real event (not idle)
+	if event.Type != EventIdle {
+		g.LastActivityTime = 0
+		g.IsActive = true
+	}
+
 	// Update mana from token usage
 	if event.TokenUsage != nil {
 		g.ManaTotal = event.TokenUsage.Total()
+	}
+
+	// Throw tool name for tool events
+	if event.ToolName != "" {
+		var color uint32
+		switch event.Type {
+		case EventBash:
+			color = colorBash
+		case EventReading:
+			if event.ToolName == "WebSearch" || event.ToolName == "WebFetch" {
+				color = colorWeb
+			} else {
+				color = colorRead
+			}
+		case EventWriting:
+			color = colorWrite
+		case EventSpawnAgent:
+			color = colorAgent
+		default:
+			color = colorDefault
+		}
+		g.ThrowTool(event.ToolName, color)
 	}
 
 	// Handle specific event types
@@ -444,7 +562,14 @@ func main() {
 		// Update systems
 		animations.Update(dt)
 		gameState.Update(dt)
-		renderer.UpdateScroll(dt)
+
+		// Sync activity state to animation system
+		animations.SetActive(gameState.IsActive)
+
+		// Only scroll when there's activity (events coming in)
+		if gameState.IsActive {
+			renderer.UpdateScroll(dt)
+		}
 
 		// Handle keyboard input for accessories
 		// Up/Down = switch row, Left/Right = cycle value
