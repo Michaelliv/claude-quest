@@ -1,64 +1,74 @@
 # Claude Quest
 
-**Your AI companion, brought to life.**
+**For Claude Code users who want to actually see what their AI is doing.**
 
-> *A pixel-art RPG companion that visualizes your Claude Code sessions in real-time. Watch Claude cast spells while reading files, attack bugs with bash commands, and celebrate victories when your code works.*
+Instead of watching text scroll by in a terminal, Claude Quest shows you a pixel-art character that reacts to every action in real-time. Reading files? Casting a spell. Running bash? Swinging into battle. Error? Taking damage. Success? Victory dance.
 
----
+```bash
+npm install -g claude-quest
+cq
+```
 
-## What is this?
-
-Claude Quest transforms your Claude Code terminal sessions into an animated adventure. Instead of just watching text scroll by, open Claude Quest in a window and see your AI assistant come to life as a cute, expressive pixel-art character.
-
-**Claude reads a file?** Watch them cast a spell.
-**Running a bash command?** They swing into action.
-**Hit an error?** They take damage (but recover!).
-**Task complete?** Victory dance!
-
-It's the coding companion you didn't know you needed.
+That's it. Open it alongside Claude Code and watch your coding session come alive.
 
 ---
 
-## Features
+## Who This Is For
 
-### Live Session Watching
-Connect to your active Claude Code conversation and watch Claude react in real-time to every action.
+- **Long session coders** - Makes 4-hour Claude Code sessions feel like a co-op adventure
+- **Streamers & content creators** - Your viewers see exactly what Claude is doing, beautifully
+- **Pixel art lovers** - Paul Robertson-inspired animations that are genuinely gorgeous
+- **Anyone who thinks coding should be more fun** - Because it should
+
+## Who This Isn't For
+
+- People who find visual feedback distracting
+- Minimalists who want nothing but terminal
+
+---
+
+## What You Get
+
+### Real-Time Visualization
+Every Claude Code action becomes an animation:
+
+| Claude Action | What You See |
+|--------------|-----------|
+| Reading files | Casting spell |
+| Bash commands | Attack animation |
+| Writing code | Scribbling away |
+| Thinking | Contemplating |
+| Extended thinking | Intense focus + particle effects |
+| Success | Victory dance |
+| Error | Taking damage (recovers!) |
 
 ### Two Modes
 
-**Vibin' Mode** - A cozy wizard's study with flickering candles, twinkling stars through the window, bubbling potions, and floating dust motes. Perfect for focused coding sessions.
+**Vibin'** - A cozy wizard's study. Flickering candles, twinkling stars through the window, bubbling potions. For focused work.
 
-**Quest Mode** - Claude walks through four beautiful parallax biomes that cycle as you work:
-- **Enchanted Forest** - Glowing mushrooms, fireflies, ancient magic trees
-- **Mountain Journey** - Snow-capped peaks, wandering clouds, pine forests
-- **Midnight Quest** - Starlit ruins, crystal caves, ethereal waterfalls
-- **Kingdom Road** - Castles on hills, spinning windmills, cozy cottages
+**Quest!** - Claude walks through four parallax biomes that cycle every 20 seconds:
+- Enchanted Forest (fireflies, glowing mushrooms)
+- Mountain Journey (snow peaks, pine forests)
+- Midnight Quest (starlit ruins, crystal caves)
+- Kingdom Road (castles, windmills)
+
+### The Mana Bar
+Shows your context window usage. Watch it fill as your conversation grows. When Claude compacts the conversation, it resets. Satisfying.
 
 ### Customization
-Dress up Claude with hats and accessories. Express yourself!
-
-### Demo Mode
-Not using Claude Code? Run `cq demo` to see all animations and explore the biomes.
+Hats and accessories. Wizard hat, crown, deal-with-it sunglasses. Because why not.
 
 ---
 
 ## Installation
 
-### npm (easiest)
+### npm
 ```bash
 npm install -g claude-quest
 ```
 
-### Homebrew (coming soon)
-```bash
-brew install claude-quest
-```
-
 ### Direct Download
-Grab the latest release for your platform from [GitHub Releases](https://github.com/Michaelliv/claude-quest/releases):
-- macOS (Intel & Apple Silicon)
-- Linux (x64)
-- Windows (x64)
+[GitHub Releases](https://github.com/Michaelliv/claude-quest/releases) - macOS, Linux, Windows
 
 ### From Source
 ```bash
@@ -71,119 +81,42 @@ go build -o cq .
 
 ## Usage
 
-### Watch your current project
 ```bash
-# In your project directory (where you're running Claude Code)
-cq
+cq              # Watch current project
+cq demo         # See all animations (no Claude Code needed)
+cq watch ~/dir  # Watch specific project
 ```
 
-### Watch a specific project
-```bash
-cq watch ~/Projects/my-app
-```
-
-### Replay a past conversation
-```bash
-cq replay ~/.claude/projects/.../conversation.jsonl
-```
-
-### Demo mode
-```bash
-cq demo
-```
-
-### Controls
-| Key | Action |
-|-----|--------|
-| `W` | Toggle Walk/Vibe mode |
-| `↑` `↓` | Switch picker row |
-| `←` `→` | Cycle accessories |
-| `Q` | Show quest text (demo) |
-| `M` | Add mana (demo) |
-| `1-4` | Think levels (demo) |
+**Controls:** `W` toggle walk mode, `↑↓←→` customize accessories
 
 ---
 
 ## How It Works
 
-Claude Quest monitors Claude Code's conversation logs (JSONL files) and translates events into animations:
-
-| Claude Action | Animation |
-|--------------|-----------|
-| Reading files | Casting spell |
-| Bash commands | Attack |
-| Writing/editing | Writing |
-| Thinking | Contemplating |
-| Extended thinking | Intense focus + particles |
-| Success | Victory dance |
-| Error | Taking damage |
-| New task | Quest received |
-
-The mana bar shows context window usage - watch it fill as your conversation grows!
+Reads Claude Code's local conversation logs (JSONL files). No API keys. No network calls. Just file watching.
 
 ---
 
-## The Aesthetic
+## The Craft
 
-Inspired by the legendary pixel art of [Paul Robertson](http://probertson.tumblr.com/), Claude Quest embraces:
-
-- **Expressive animation** - Every frame matters
-- **Rich secondary motion** - Things bob, sway, and breathe
-- **Atmospheric details** - Floating particles, flickering flames, twinkling stars
-- **Personality** - Claude isn't just a sprite, they're a character
-
-The 320x200 resolution pays homage to classic DOS-era RPGs while the 24fps animations keep everything buttery smooth.
-
----
-
-## Requirements
-
-- **Claude Code** - This is a companion app for [Claude Code](https://claude.ai/code)
-- Works on macOS, Linux, and Windows
-- No dependencies when installed via npm or binary releases
-
----
-
-## Development
-
-Built with:
-- **Go** - Core application
-- **raylib-go** - Graphics and windowing
-- **Custom sprite system** - All animations generated procedurally
-
-### Building from source
-```bash
-# Install dependencies (Linux only)
-sudo apt-get install libgl1-mesa-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libwayland-dev libxkbcommon-dev
-
-# Build
-go build -o cq .
-
-# Regenerate sprites
-go run ./cmd/spritegen/...
-```
+Inspired by [Paul Robertson's](http://probertson.tumblr.com/) legendary pixel art:
+- 320x200 resolution (DOS-era homage)
+- 24fps hand-crafted animations
+- Secondary motion on everything (bob, sway, breathe)
+- Atmospheric details (particles, flames, stars)
 
 ---
 
 ## FAQ
 
-**Q: Does this actually connect to Claude?**
-A: It reads Claude Code's local conversation logs. No API keys or network connections needed.
+**Is this official?**
+Community project. Not affiliated with Anthropic.
 
-**Q: Can I use this without Claude Code?**
-A: Yes! Run `cq demo` to enjoy the animations standalone.
+**Works without Claude Code?**
+Yes. `cq demo` runs standalone.
 
-**Q: Why pixel art?**
-A: Because pixel art is beautiful, and coding should be fun.
-
-**Q: Is this official?**
-A: This is a community project, not affiliated with Anthropic.
-
----
-
-## Contributing
-
-Found a bug? Want to add a new hat? PRs welcome!
+**Why does this exist?**
+Because staring at terminal text for hours is less fun than watching a pixel wizard battle bugs.
 
 ---
 
@@ -194,5 +127,5 @@ MIT
 ---
 
 <p align="center">
-  <i>Made with pixels and passion</i>
+<i>Turn your terminal into a quest.</i>
 </p>
