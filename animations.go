@@ -90,7 +90,8 @@ func (a *AnimationSystem) HandleEvent(event Event) {
 	case EventSuccess:
 		newAnim = AnimVictory
 	case EventError:
-		newAnim = AnimHurt
+		// Don't trigger hurt directly - spawn enemy instead, hurt when it hits
+		return
 	case EventThinking:
 		newAnim = AnimThinking
 	case EventIdle:
@@ -115,6 +116,9 @@ func (a *AnimationSystem) HandleEvent(event Event) {
 	case EventAskUser:
 		// Asking user - use thinking animation
 		newAnim = AnimThinking
+	case EventEnemyHit:
+		// Enemy hit Claude - play hurt animation
+		newAnim = AnimHurt
 
 	default:
 		return

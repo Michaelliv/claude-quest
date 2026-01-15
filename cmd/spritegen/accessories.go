@@ -72,32 +72,41 @@ func savePixels(path string, pixels [][]C) {
 
 // Hat generators - Paul Robertson quality: detailed, personality, great shading
 func generateWizardHat() [][]C {
+	// Gandalf-style: tall, crooked tip, wide floppy brim, weathered look
 	o := O                        // outline
-	m := C{90, 55, 130, 255}      // main purple
-	s := C{55, 35, 90, 255}       // shadow
-	sd := C{40, 25, 65, 255}      // deep shadow
-	h := C{130, 90, 170, 255}     // highlight
-	hb := C{160, 120, 195, 255}   // bright highlight
-	y := Y                         // star yellow
-	yb := C{255, 255, 200, 255}   // star bright
-	yd := C{220, 180, 60, 255}    // star dark
+	// Weathered gray-blue colors (old wizard hat feel)
+	m := C{75, 80, 95, 255}       // main gray-blue
+	s := C{50, 55, 70, 255}       // shadow
+	sd := C{35, 40, 55, 255}      // deep shadow
+	h := C{100, 105, 120, 255}    // highlight
+	hb := C{125, 130, 145, 255}   // bright highlight
+	hw := C{150, 155, 170, 255}   // worn edge highlight
+	// Subtle weathering/patches
+	w := C{85, 90, 100, 255}      // weathered patch
+	wd := C{60, 65, 75, 255}      // dark weathered
 
+	// Tall hat with crooked tip bending to the right, wide droopy brim
 	return [][]C{
-		{X, X, X, X, X, X, X, X, o, X, X, X, X, X, X, X, X, X},
-		{X, X, X, X, X, X, X, o, hb, o, X, X, X, X, X, X, X, X},
-		{X, X, X, X, X, X, o, h, h, hb, o, X, X, X, X, X, X, X},
-		{X, X, X, X, X, o, sd, s, m, h, h, o, X, X, X, X, X, X},
-		{X, X, X, X, o, sd, s, s, m, m, h, hb, o, X, X, X, X, X},
-		{X, X, X, o, sd, s, s, m, m, m, h, h, hb, o, X, X, X, X},
-		{X, X, o, sd, s, s, m, yb, yb, yb, m, h, h, hb, o, X, X, X},
-		{X, o, sd, s, s, m, yb, yb, W, yb, yb, m, h, h, hb, o, X, X},
-		{o, sd, s, s, m, m, yd, yb, yb, yb, yd, m, m, h, hb, o, X, X},
-		{o, sd, s, m, m, m, m, yd, y, yd, m, m, m, h, h, hb, o, X},
-		{o, sd, s, m, m, m, m, m, m, m, m, m, m, h, h, hb, o, X},
-		{o, o, sd, s, s, m, m, m, m, m, m, m, h, h, hb, o, o, X},
-		{X, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, X, X},
-		{X, o, sd, sd, s, s, s, m, m, m, m, h, h, hb, hb, o, X, X},
-		{X, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, X, X},
+		// Crooked tip - bends right
+		{X, X, X, X, X, X, X, X, X, X, X, X, X, o, X, X, X, X, X, X, X},
+		{X, X, X, X, X, X, X, X, X, X, X, X, o, hb, o, X, X, X, X, X, X},
+		{X, X, X, X, X, X, X, X, X, X, X, o, h, h, hb, o, X, X, X, X, X},
+		{X, X, X, X, X, X, X, X, X, X, o, sd, m, h, h, o, X, X, X, X, X},
+		{X, X, X, X, X, X, X, X, X, o, sd, s, m, m, h, o, X, X, X, X, X},
+		{X, X, X, X, X, X, X, X, o, sd, s, m, m, m, h, o, X, X, X, X, X},
+		{X, X, X, X, X, X, X, o, sd, s, m, w, m, m, h, hb, o, X, X, X, X},
+		{X, X, X, X, X, X, o, sd, s, s, m, m, m, m, h, hb, o, X, X, X, X},
+		{X, X, X, X, X, o, sd, s, m, m, wd, m, m, h, h, hb, o, X, X, X, X},
+		{X, X, X, X, o, sd, s, s, m, m, m, m, m, m, h, hb, o, X, X, X, X},
+		{X, X, X, o, sd, s, s, m, m, w, m, m, m, h, h, hb, o, X, X, X, X},
+		{X, X, o, sd, s, s, m, m, m, m, m, m, m, h, h, hb, o, X, X, X, X},
+		{X, o, sd, s, s, m, m, m, wd, m, m, m, m, h, h, hb, o, X, X, X, X},
+		// Wide brim - droopy on left side, slightly up on right
+		{o, sd, s, s, m, m, m, m, m, m, m, m, m, m, h, hb, o, X, X, X, X},
+		{o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, X, X, X},
+		{o, wd, sd, s, s, m, m, m, m, m, m, m, m, h, h, hw, hw, hb, o, X, X},
+		{o, sd, wd, sd, s, s, m, m, m, m, m, m, h, h, hw, hb, hb, o, X, X, X},
+		{X, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, o, X, X, X},
 	}
 }
 

@@ -107,6 +107,11 @@ type GameState struct {
 	// Flying enemies (attack Claude on errors)
 	FlyingEnemies []FlyingEnemy
 	PendingHurt   bool // Set when enemy hits, triggers hurt animation
+
+	// Thought bubble display
+	ThoughtText  string  // Current thought text to display
+	ThoughtTimer float32 // Timer for thought display (6 seconds)
+	ThoughtFade  float32 // Fade in/out animation
 }
 
 // NewGameState creates a new game state
@@ -162,6 +167,26 @@ func (g *GameState) Update(dt float32) {
 		if g.CompactTimer > 2.0 {
 			g.CompactActive = false
 			g.CompactTimer = 0
+		}
+	}
+
+	// Thought bubble timer (12 second display with fade in/out)
+	if g.ThoughtText != "" {
+		g.ThoughtTimer += dt
+		if g.ThoughtTimer < 0.4 {
+			// Fade in
+			g.ThoughtFade = g.ThoughtTimer / 0.4
+		} else if g.ThoughtTimer < 11.6 {
+			// Full display
+			g.ThoughtFade = 1.0
+		} else if g.ThoughtTimer < 12.0 {
+			// Fade out
+			g.ThoughtFade = 1.0 - (g.ThoughtTimer - 11.6) / 0.4
+		} else {
+			// Clear
+			g.ThoughtText = ""
+			g.ThoughtTimer = 0
+			g.ThoughtFade = 0
 		}
 	}
 
@@ -515,6 +540,14 @@ func (g *GameState) HandleEvent(event Event) {
 		g.QuestTimer = 0
 		g.QuestFade = 0
 
+	case EventThinking:
+		// Display thought in thought bubble if we have content
+		if event.ThoughtText != "" {
+			g.ThoughtText = event.ThoughtText
+			g.ThoughtTimer = 0
+			g.ThoughtFade = 0
+		}
+
 	case EventThinkHard:
 		g.QuestText = event.Details
 		g.QuestTimer = 0
@@ -543,6 +576,10 @@ func (g *GameState) HandleEvent(event Event) {
 			agentType = agentType[7:]
 		}
 		g.SpawnMiniAgent(agentType)
+
+	case EventAgentComplete:
+		// Agent finished - poof the oldest mini agent
+		g.PoofMiniAgent("")
 
 	case EventError:
 		// Spawn a bug or ERROR enemy
@@ -1172,7 +1209,7 @@ func main() {
 		// Check if an enemy hit Claude - trigger hurt animation
 		if gameState.PendingHurt {
 			gameState.PendingHurt = false
-			animations.HandleEvent(Event{Type: EventError})
+			animations.HandleEvent(Event{Type: EventEnemyHit})
 		}
 
 		// Only scroll when there's activity (events coming in)

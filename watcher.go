@@ -29,9 +29,11 @@ const (
 	EventQuest      // User prompt (quest text)
 	EventCompact    // Conversation compacted (sleep/rest)
 	EventThinkHard  // Extended thinking requested
-	EventSpawnAgent // Task tool spawned an agent
-	EventTodoUpdate // TodoWrite tool used
-	EventAskUser    // AskUserQuestion tool
+	EventSpawnAgent    // Task tool spawned an agent
+	EventAgentComplete // Task tool completed (agent should poof)
+	EventTodoUpdate    // TodoWrite tool used
+	EventAskUser       // AskUserQuestion tool
+	EventEnemyHit      // Enemy hit Claude (triggers hurt animation)
 )
 
 // TokenUsage tracks context window usage for mana bar
@@ -66,12 +68,14 @@ type Event struct {
 	Details string
 
 	// Extended data for game mechanics
-	TokenUsage  *TokenUsage  // For mana bar
-	TodoItems   []TodoItem   // For todo display
-	CompactInfo *CompactInfo // For compact/sleep
-	ToolName    string       // Original tool name
-	IsError     bool         // Whether this was an error
-	ThinkLevel  ThinkLevel   // For think hard effects
+	TokenUsage   *TokenUsage  // For mana bar
+	TodoItems    []TodoItem   // For todo display
+	CompactInfo  *CompactInfo // For compact/sleep
+	ToolName     string       // Original tool name
+	ToolUseID    string       // Tool use ID (for tracking Task completions)
+	IsError      bool         // Whether this was an error
+	ThinkLevel   ThinkLevel   // For think hard effects
+	ThoughtText  string       // Claude's thinking content (for thought bubble)
 }
 
 // ClaudeMessage represents the structure of Claude Code JSONL format
@@ -97,13 +101,14 @@ type ClaudeMessage struct {
 // ContentItem represents a single content item in message.content array
 type ContentItem struct {
 	Type      string          `json:"type"`
+	ID        string          `json:"id,omitempty"`         // For tool_use - the tool use ID
 	Name      string          `json:"name,omitempty"`
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
-	Content   string          `json:"content,omitempty"` // For tool_result
-	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Content   json.RawMessage `json:"content,omitempty"` // For tool_result (can be string or array)
+	ToolUseID string          `json:"tool_use_id,omitempty"` // For tool_result - reference to tool_use ID
 }
 
 // TodoWriteInput represents the input for TodoWrite tool
@@ -131,19 +136,23 @@ type Watcher struct {
 	Events      chan Event
 	Mode        WatchMode
 	FilePath    string        // Path to JSONL file
+	ProjectDir  string        // Claude project directory (for checking new files)
 	ReplaySpeed time.Duration // Delay between events in replay mode
 	lastPos     int64         // Last read position for tailing
+	lastModTime time.Time     // Last modification time of current file
 
 	// State tracking
-	LastTokenUsage *TokenUsage
-	CurrentTodos   []TodoItem
+	LastTokenUsage   *TokenUsage
+	CurrentTodos     []TodoItem
+	ActiveTaskAgents map[string]string // tool_use_id -> agent type (for poof detection)
 }
 
 // NewWatcher creates a new event watcher
 func NewWatcher() *Watcher {
 	return &Watcher{
-		Events:      make(chan Event, 100),
-		ReplaySpeed: 200 * time.Millisecond, // Default replay speed
+		Events:           make(chan Event, 100),
+		ReplaySpeed:      200 * time.Millisecond, // Default replay speed
+		ActiveTaskAgents: make(map[string]string),
 	}
 }
 
@@ -158,6 +167,7 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 
 	encoded := strings.ReplaceAll(absPath, "/", "-")
 	claudeProjectDir := filepath.Join(os.Getenv("HOME"), ".claude", "projects", encoded)
+	w.ProjectDir = claudeProjectDir
 
 	// Check if project directory exists
 	if _, err := os.Stat(claudeProjectDir); os.IsNotExist(err) {
@@ -165,9 +175,21 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	}
 
 	// Find the most recently modified .jsonl file (excluding agent- files)
-	entries, err := os.ReadDir(claudeProjectDir)
+	filePath, modTime, err := w.findNewestConversation()
 	if err != nil {
-		return fmt.Errorf("failed to read project directory: %w", err)
+		return err
+	}
+
+	w.FilePath = filePath
+	w.lastModTime = modTime
+	return nil
+}
+
+// findNewestConversation finds the most recently modified conversation file
+func (w *Watcher) findNewestConversation() (string, time.Time, error) {
+	entries, err := os.ReadDir(w.ProjectDir)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to read project directory: %w", err)
 	}
 
 	var jsonlFiles []os.DirEntry
@@ -181,7 +203,7 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	}
 
 	if len(jsonlFiles) == 0 {
-		return fmt.Errorf("no conversation files found in %s", claudeProjectDir)
+		return "", time.Time{}, fmt.Errorf("no conversation files found in %s", w.ProjectDir)
 	}
 
 	// Sort by modification time, newest first
@@ -191,8 +213,8 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 		return infoI.ModTime().After(infoJ.ModTime())
 	})
 
-	w.FilePath = filepath.Join(claudeProjectDir, jsonlFiles[0].Name())
-	return nil
+	info, _ := jsonlFiles[0].Info()
+	return filepath.Join(w.ProjectDir, jsonlFiles[0].Name()), info.ModTime(), nil
 }
 
 // StartLive begins watching the conversation file for new events
@@ -230,7 +252,20 @@ func (w *Watcher) tailFile() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
+	checkCounter := 0
+	const checkInterval = 20 // Check for newer files every 2 seconds (20 * 100ms)
+
 	for range ticker.C {
+		checkCounter++
+
+		// Periodically check if a newer conversation file was created
+		if checkCounter >= checkInterval {
+			checkCounter = 0
+			if w.checkForNewerFile() {
+				continue // Switched to new file, restart loop
+			}
+		}
+
 		file, err := os.Open(w.FilePath)
 		if err != nil {
 			continue
@@ -266,6 +301,40 @@ func (w *Watcher) tailFile() {
 
 		file.Close()
 	}
+}
+
+// checkForNewerFile checks if a newer conversation file exists and switches to it
+func (w *Watcher) checkForNewerFile() bool {
+	if w.ProjectDir == "" {
+		return false
+	}
+
+	filePath, modTime, err := w.findNewestConversation()
+	if err != nil {
+		return false
+	}
+
+	// If we found a different file that's newer, switch to it
+	if filePath != w.FilePath && modTime.After(w.lastModTime) {
+		oldFile := filepath.Base(w.FilePath)
+		newFile := filepath.Base(filePath)
+
+		w.FilePath = filePath
+		w.lastModTime = modTime
+		w.lastPos = 0 // Start from beginning of new file
+
+		// Notify about the switch
+		w.Events <- Event{
+			Type:    EventSystemInit,
+			Details: fmt.Sprintf("Switched: %s", newFile),
+		}
+
+		// Log the switch
+		fmt.Printf("Switched from %s to %s\n", oldFile, newFile)
+		return true
+	}
+
+	return false
 }
 
 // StartReplay plays through an existing conversation file
@@ -394,9 +463,10 @@ func (w *Watcher) parseAssistantMessage(msg ClaudeMessage) []Event {
 				details = "Deep thinking..."
 			}
 			events = append(events, Event{
-				Type:       EventThinking,
-				Details:    details,
-				TokenUsage: w.LastTokenUsage,
+				Type:        EventThinking,
+				Details:     details,
+				TokenUsage:  w.LastTokenUsage,
+				ThoughtText: item.Thinking,
 			})
 
 		case "text":
@@ -426,11 +496,29 @@ func (w *Watcher) parseUserMessage(msg ClaudeMessage) []Event {
 	for _, item := range content {
 		if item.Type == "tool_result" {
 			hasToolResult = true
+
+			// Check if this is a Task completion (agent should poof)
+			if item.ToolUseID != "" {
+				if agentType, ok := w.ActiveTaskAgents[item.ToolUseID]; ok {
+					delete(w.ActiveTaskAgents, item.ToolUseID)
+					events = append(events, Event{
+						Type:      EventAgentComplete,
+						Details:   agentType,
+						ToolUseID: item.ToolUseID,
+					})
+				}
+			}
+
 			if item.IsError {
 				hasError = true
+				// Extract error content (could be string or array)
+				errorDetails := "Error"
+				if len(item.Content) > 0 {
+					errorDetails = truncate(string(item.Content), 40)
+				}
 				events = append(events, Event{
 					Type:    EventError,
-					Details: truncate(item.Content, 40),
+					Details: errorDetails,
 					IsError: true,
 				})
 			}
@@ -548,15 +636,21 @@ func (w *Watcher) parseToolUse(item ContentItem) *Event {
 
 	// Task/Agent spawning
 	case toolName == "task":
-		evt := &Event{Type: EventSpawnAgent, Details: "Spawning agent", ToolName: item.Name}
+		evt := &Event{Type: EventSpawnAgent, Details: "Spawning agent", ToolName: item.Name, ToolUseID: item.ID}
+		agentType := "Agent"
 		// Try to extract agent type from input
 		var taskInput TaskInput
 		if err := json.Unmarshal(item.Input, &taskInput); err == nil {
 			if taskInput.SubagentType != "" {
+				agentType = taskInput.SubagentType
 				evt.Details = fmt.Sprintf("Agent: %s", taskInput.SubagentType)
 			} else if taskInput.Description != "" {
 				evt.Details = truncate(taskInput.Description, 30)
 			}
+		}
+		// Track this Task for poof detection when it completes
+		if item.ID != "" {
+			w.ActiveTaskAgents[item.ID] = agentType
 		}
 		return evt
 

@@ -520,9 +520,9 @@ func (r *Renderer) drawBiomeMountainJourney() {
 		rl.DrawLine(0, y, screenWidth, y, c)
 	}
 
-	// Sun glow on horizon
+	// Sun glow on horizon (draw outermost first, then inner - back to front)
 	sunX := int32(200) - int32(scroll*0.01)%screenWidth
-	for i := int32(0); i < 20; i++ {
+	for i := int32(19); i >= 0; i-- {
 		alpha := uint8(60 - i*3)
 		rl.DrawCircle(sunX, 95, float32(i+5), rl.Color{R: 255, G: 200, B: 150, A: alpha})
 	}
@@ -2098,6 +2098,11 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	// Draw mana bar at bottom
 	r.drawManaBar(state)
 
+	// Draw thought bubble (above Claude)
+	if state.ThoughtText != "" && state.ThoughtFade > 0 {
+		r.drawThoughtBubble(state)
+	}
+
 	// Draw thrown tools
 	r.drawThrownTools(state)
 
@@ -2345,6 +2350,119 @@ func (r *Renderer) drawQuestText(state *GameState) {
 		} else {
 			rl.DrawText(line, panelX+padding+8, y, 6, textColor)
 		}
+	}
+}
+
+// drawThoughtBubble renders Claude's current thought in a cloud-like bubble
+func (r *Renderer) drawThoughtBubble(state *GameState) {
+	if state.ThoughtText == "" || state.ThoughtFade <= 0 {
+		return
+	}
+
+	alpha := uint8(state.ThoughtFade * 200) // Slightly transparent
+
+	// Truncate thought text if too long (show first 150 chars)
+	thoughtText := state.ThoughtText
+	if len(thoughtText) > 150 {
+		thoughtText = thoughtText[:147] + "..."
+	}
+
+	// Remove newlines for cleaner display
+	thoughtText = strings.ReplaceAll(thoughtText, "\n", " ")
+	thoughtText = strings.ReplaceAll(thoughtText, "  ", " ")
+
+	// Colors
+	bubbleBg := rl.Color{R: 250, G: 248, B: 245, A: alpha}
+	bubbleBorder := rl.Color{R: 180, G: 175, B: 165, A: alpha}
+	textColor := rl.Color{R: 60, G: 55, B: 50, A: alpha}
+	shadowColor := rl.Color{R: 0, G: 0, B: 0, A: uint8(float32(alpha) * 0.3)}
+
+	// Bubble dimensions - positioned above Claude
+	padding := int32(4)
+	fontSize := int32(5)
+	maxBubbleWidth := int32(180)
+
+	// Word wrap the text
+	lines := wordWrap(thoughtText, fontSize, maxBubbleWidth-padding*2)
+	if len(lines) > 4 {
+		lines = lines[:4]
+		lines[3] = lines[3][:min(len(lines[3]), 20)] + "..."
+	}
+
+	lineHeight := int32(8) // More space between lines
+	bubbleHeight := int32(len(lines))*lineHeight + padding*2 + 2 // Extra vertical padding
+
+	// Calculate text width for bubble sizing
+	maxTextWidth := int32(0)
+	for _, line := range lines {
+		w := int32(rl.MeasureText(line, fontSize))
+		if w > maxTextWidth {
+			maxTextWidth = w
+		}
+	}
+	bubbleWidth := maxTextWidth + padding*2 + 4
+	if bubbleWidth > maxBubbleWidth {
+		bubbleWidth = maxBubbleWidth
+	}
+	if bubbleWidth < 40 {
+		bubbleWidth = 40
+	}
+
+	// Position: above and to the right of Claude's head
+	claudeX := float32(screenWidth / 2)
+	bubbleX := int32(claudeX) - bubbleWidth/2 + 20
+	bubbleY := int32(50) // Above Claude
+
+	// Keep bubble on screen
+	if bubbleX < 5 {
+		bubbleX = 5
+	}
+	if bubbleX+bubbleWidth > screenWidth-5 {
+		bubbleX = screenWidth - 5 - bubbleWidth
+	}
+
+	// Draw shadow
+	rl.DrawRectangleRounded(
+		rl.Rectangle{X: float32(bubbleX + 2), Y: float32(bubbleY + 2), Width: float32(bubbleWidth), Height: float32(bubbleHeight)},
+		0.3, 8, shadowColor,
+	)
+
+	// Draw main bubble with rounded corners
+	rl.DrawRectangleRounded(
+		rl.Rectangle{X: float32(bubbleX), Y: float32(bubbleY), Width: float32(bubbleWidth), Height: float32(bubbleHeight)},
+		0.3, 8, bubbleBg,
+	)
+	rl.DrawRectangleRoundedLines(
+		rl.Rectangle{X: float32(bubbleX), Y: float32(bubbleY), Width: float32(bubbleWidth), Height: float32(bubbleHeight)},
+		0.3, 8, bubbleBorder,
+	)
+
+	// Draw thought bubble "tail" - small circles leading toward Claude's head
+	// Claude position: top-left (128, 106), size 64x64, head at ~Y=120
+	claudeHeadX := int32(screenWidth / 2) // 160
+	claudeHeadY := int32(120)             // Top of head area
+
+	// Start tail from bottom of bubble, slightly left of center
+	tailStartX := bubbleX + bubbleWidth/2
+	tailStartY := bubbleY + bubbleHeight
+
+	// Three circles in a curved path toward Claude's head
+	// Calculate direction vector
+	dx := float32(claudeHeadX - tailStartX)
+	dy := float32(claudeHeadY - tailStartY)
+
+	// Draw circles along the path, getting smaller as they approach Claude
+	rl.DrawCircle(tailStartX+int32(dx*0.2), tailStartY+int32(dy*0.25), 4, bubbleBg)
+	rl.DrawCircleLines(tailStartX+int32(dx*0.2), tailStartY+int32(dy*0.25), 4, bubbleBorder)
+	rl.DrawCircle(tailStartX+int32(dx*0.45), tailStartY+int32(dy*0.5), 3, bubbleBg)
+	rl.DrawCircleLines(tailStartX+int32(dx*0.45), tailStartY+int32(dy*0.5), 3, bubbleBorder)
+	rl.DrawCircle(tailStartX+int32(dx*0.7), tailStartY+int32(dy*0.75), 2, bubbleBg)
+	rl.DrawCircleLines(tailStartX+int32(dx*0.7), tailStartY+int32(dy*0.75), 2, bubbleBorder)
+
+	// Draw text with better vertical centering
+	for i, line := range lines {
+		y := bubbleY + padding + 2 + int32(i)*lineHeight
+		rl.DrawText(line, bubbleX+padding+2, y, fontSize, textColor)
 	}
 }
 
