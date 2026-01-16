@@ -46,15 +46,15 @@ Every Claude Code action becomes an animation:
 | Success | Victory dance |
 | Error | Taking damage (recovers!) |
 
-### Two Modes
+### Five Biomes
 
-**Vibin'** - A cozy wizard's study. Flickering candles, twinkling stars through the window, bubbling potions. For focused work.
+Claude walks through beautiful parallax backgrounds that cycle every 20 seconds:
 
-**Quest!** - Claude walks through four parallax biomes that cycle every 20 seconds:
-- Enchanted Forest (fireflies, glowing mushrooms)
-- Mountain Journey (snow peaks, pine forests)
-- Midnight Quest (starlit ruins, crystal caves)
-- Kingdom Road (castles, windmills)
+- **Enchanted Forest** - Magical trees, fireflies, glowing mushrooms
+- **Mountain Journey** - Snow peaks, waterfalls, ancient ruins
+- **Midnight Quest** - Starry sky, glowing crystals, spooky trees
+- **Kingdom Road** - Castle, windmills, cottages, sunset
+- **Wizard's Library** - Endless corridor with bookshelves, floating orbs
 
 ### The Mana Bar
 Shows your remaining context window. Starts full at 200k tokens and drains as your conversation grows. When Claude compacts, it refills. Satisfying.
@@ -84,7 +84,7 @@ cq demo         # See all animations (no Claude Code needed)
 cq watch ~/dir  # Watch specific project
 ```
 
-**Controls:** `W` toggle walk mode, `Tab` toggle picker, `↑↓←→` customize accessories
+**Controls:** `Tab` open accessory picker, `←→` switch slots, `↑↓` cycle items
 
 ---
 
