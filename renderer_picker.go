@@ -249,144 +249,54 @@ func (r *Renderer) UpdateScrollOnly(dt float32) {
 	}
 }
 
-// DrawAccessoryPicker draws the collapsible accessory picker UI
+// DrawAccessoryPicker draws the collapsible accessory picker UI (legacy, replaced by modal)
 func (r *Renderer) DrawAccessoryPicker() {
-	// Layout constants (smaller text/spacing)
-	rowH := int32(9)
-	padding := int32(2)
-	labelW := int32(22)
-	arrowW := int32(5)
-	valueW := int32(55) // Wider to fit aura names
-	gap := int32(2)
+	// Replaced by modal picker - kept for backwards compatibility
+	r.DrawAccessoryPickerHint()
+}
 
-	// Calculate full panel size (4 rows: HAT, FACE, AURA, TRAIL)
-	panelW := padding + labelW + gap + arrowW + valueW + arrowW + padding
-
-	// Collapsed bar height (same as mana bar: 10px)
-	collapsedH := int32(10)
-
-	// Full panel height = collapsed header + 4 rows
-	fullPanelH := collapsedH + (rowH+gap)*4 + padding
-
-	// Animate between collapsed and full panel
-	// Use easeOutQuad for smooth animation
-	t := r.pickerAnim
-	eased := t * (2 - t) // easeOutQuad
-
-	// Calculate animated height
-	panelH := int32(float32(collapsedH) + eased*float32(fullPanelH-collapsedH))
-
-	// Position in bottom-left corner (same as mana bar: screenHeight - height - 4)
-	panelX := int32(4)
-	panelY := screenHeight - panelH - 4
-
-	// Colors
-	panelBg := rl.Color{R: 20, G: 18, B: 30, A: 230}
-	panelBorder := rl.Color{R: 60, G: 55, B: 80, A: 255}
-	labelDim := rl.Color{R: 80, G: 75, B: 100, A: 255}
-	labelActive := rl.Color{R: 180, G: 175, B: 200, A: 255}
-	valueDim := rl.Color{R: 120, G: 115, B: 140, A: 255}
-	valueActive := rl.Color{R: 255, G: 200, B: 80, A: 255}
-	arrowDim := rl.Color{R: 80, G: 75, B: 100, A: 255}
-	arrowActive := rl.Color{R: 180, G: 175, B: 200, A: 255}
-
-	// Always draw panel background
-	rl.DrawRectangle(panelX-1, panelY-1, panelW+2, panelH+2, panelBorder)
-	rl.DrawRectangle(panelX, panelY, panelW, panelH, panelBg)
-
-	// Draw "Tab ^" hint (changes to "Tab v" when expanded)
-	hintAlpha := uint8(200)
-	hintColor := rl.Color{R: 100, G: 95, B: 120, A: hintAlpha}
-	if r.pickerExpanded {
-		rl.DrawText("Tab v", panelX+padding, panelY+1, 8, hintColor)
-	} else {
-		rl.DrawText("Tab ^", panelX+padding, panelY+1, 8, hintColor)
-	}
-
-	// Don't draw panel contents if mostly collapsed
-	if r.pickerAnim < 0.1 {
+// DrawAccessoryPickerHint draws a small hint to open the accessory picker
+func (r *Renderer) DrawAccessoryPickerHint() {
+	// Don't show hint if modal is open
+	if r.pickerModal {
 		return
 	}
 
-	// Fade in content alpha
-	contentAlpha := uint8(eased * 255)
-	labelDim.A = contentAlpha
-	labelActive.A = contentAlpha
-	valueDim.A = contentAlpha
-	valueActive.A = contentAlpha
-	arrowDim.A = contentAlpha
-	arrowActive.A = contentAlpha
+	// Small hint in bottom-left corner
+	panelX := int32(4)
+	panelY := int32(screenHeight - 14)
+	panelW := int32(50)
+	panelH := int32(10)
 
-	// Helper to draw a row
-	drawRow := func(rowIdx int, label, value string) {
-		rowY := panelY + collapsedH + int32(rowIdx)*(rowH+gap)
-		x := panelX + padding
+	// Background
+	panelBg := rl.Color{R: 20, G: 18, B: 30, A: 200}
+	panelBorder := rl.Color{R: 60, G: 55, B: 80, A: 200}
 
-		// Determine colors based on active row
-		lblColor := labelDim
-		arrColor := arrowDim
-		valColor := valueDim
-		if r.activeRow == rowIdx {
-			lblColor = labelActive
-			arrColor = arrowActive
-			if value != "-" {
-				valColor = valueActive
-			}
-		}
+	rl.DrawRectangle(panelX-1, panelY-1, panelW+2, panelH+2, panelBorder)
+	rl.DrawRectangle(panelX, panelY, panelW, panelH, panelBg)
 
-		// Label
-		rl.DrawText(label, x, rowY+2, 8, lblColor)
-		x += labelW + gap
+	// Hint text
+	hintColor := rl.Color{R: 120, G: 115, B: 150, A: 255}
+	rl.DrawText("Tab", panelX+4, panelY+1, 8, hintColor)
 
-		// Left arrow
-		rl.DrawText("<", x, rowY+2, 8, arrColor)
-		x += arrowW
-
-		// Value (centered)
-		textW := rl.MeasureText(value, 8)
-		textX := x + (valueW-textW)/2
-		rl.DrawText(value, textX, rowY+2, 8, valColor)
-		x += valueW
-
-		// Right arrow
-		rl.DrawText(">", x, rowY+2, 8, arrColor)
+	// Show current equipped count
+	ownedCount := 0
+	if r.currentHat >= 0 {
+		ownedCount++
+	}
+	if r.currentFace >= 0 {
+		ownedCount++
+	}
+	if r.currentAura >= 0 {
+		ownedCount++
+	}
+	if r.currentTrail >= 0 {
+		ownedCount++
 	}
 
-	// === ROW 0: HAT ===
-	hatName := r.GetCurrentHatName()
-	if hatName == "" {
-		hatName = "-"
+	if ownedCount > 0 {
+		countColor := rl.Color{R: 255, G: 200, B: 80, A: 255}
+		countText := fmt.Sprintf("%d", ownedCount)
+		rl.DrawText(countText, panelX+30, panelY+1, 8, countColor)
 	}
-	drawRow(0, "HAT", hatName)
-
-	// === ROW 1: FACE ===
-	faceName := r.GetCurrentFaceName()
-	if faceName == "" {
-		faceName = "-"
-	}
-	drawRow(1, "FACE", faceName)
-
-	// === ROW 2: AURA ===
-	auraName := r.GetCurrentAuraName()
-	if auraName == "" {
-		auraName = "-"
-	} else {
-		// Strip "aura_" prefix for display
-		if len(auraName) > 5 {
-			auraName = auraName[5:]
-		}
-	}
-	drawRow(2, "AURA", auraName)
-
-	// === ROW 3: TRAIL ===
-	trailName := r.GetCurrentTrailName()
-	if trailName == "" {
-		trailName = "-"
-	} else {
-		// Strip "trail_" prefix for display
-		if len(trailName) > 6 {
-			trailName = trailName[6:]
-		}
-	}
-	drawRow(3, "TRAL", trailName)
 }

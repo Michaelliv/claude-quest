@@ -122,6 +122,17 @@ type Renderer struct {
 	// Picker visibility
 	pickerExpanded bool
 	pickerAnim     float32 // 0.0 = collapsed, 1.0 = expanded
+
+	// Modal picker state
+	pickerModal       bool    // True when modal picker is open
+	pickerModalAnim   float32 // 0.0 = closed, 1.0 = fully open
+	pickerSlot        int     // Currently selected slot (0=HAT, 1=FACE, 2=AURA, 3=TRAIL)
+	pickerItemIndex   [4]int  // Selected item index per slot (-1 = none)
+	pickerScrollPos   [4]int  // Scroll position per slot (for when items overflow)
+	pickerPreviewHat  int     // Preview hat while browsing (-1 = use current)
+	pickerPreviewFace int     // Preview face while browsing
+	pickerPreviewAura int     // Preview aura while browsing
+	pickerPreviewTrail int    // Preview trail while browsing
 }
 
 // SetProfile sets the career profile for ownership checks
@@ -179,6 +190,12 @@ func NewRenderer(config *Config) *Renderer {
 		// Initialize aura and trail names (particle-based, no textures)
 		auraNames:  []string{"aura_pixel", "aura_flame", "aura_frost", "aura_electric", "aura_shadow", "aura_heart", "aura_code", "aura_rainbow"},
 		trailNames: []string{"trail_sparkle", "trail_flame", "trail_frost", "trail_hearts", "trail_pixel", "trail_rainbow"},
+		// Modal picker defaults
+		pickerPreviewHat:   -2, // -2 means "use current" (distinct from -1 = none selected)
+		pickerPreviewFace:  -2,
+		pickerPreviewAura:  -2,
+		pickerPreviewTrail: -2,
+		pickerItemIndex:    [4]int{-1, -1, -1, -1},
 	}
 
 	// Try to load sprite sheet

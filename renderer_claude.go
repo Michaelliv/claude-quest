@@ -203,12 +203,14 @@ func getHeadOffset(state *AnimationState) (float32, float32) {
 }
 
 func (r *Renderer) drawHat(state *AnimationState) {
-	if r.currentHat < 0 || r.currentHat >= len(r.hats) {
+	// Use preview hat when modal picker is open
+	hatIdx := r.GetPreviewHat()
+	if hatIdx < 0 || hatIdx >= len(r.hats) {
 		return
 	}
 
-	hat := r.hats[r.currentHat]
-	hatName := r.hatNames[r.currentHat]
+	hat := r.hats[hatIdx]
+	hatName := r.hatNames[hatIdx]
 
 	// Get animation-specific offset (in sprite pixels, before scaling)
 	headOffX, headOffY := getHeadOffset(state)
@@ -272,12 +274,14 @@ func (r *Renderer) drawHat(state *AnimationState) {
 }
 
 func (r *Renderer) drawFace(state *AnimationState) {
-	if r.currentFace < 0 || r.currentFace >= len(r.faces) {
+	// Use preview face when modal picker is open
+	faceIdx := r.GetPreviewFace()
+	if faceIdx < 0 || faceIdx >= len(r.faces) {
 		return
 	}
 
-	face := r.faces[r.currentFace]
-	faceName := r.faceNames[r.currentFace]
+	face := r.faces[faceIdx]
+	faceName := r.faceNames[faceIdx]
 
 	// Get animation-specific offset
 	headOffX, headOffY := getHeadOffset(state)

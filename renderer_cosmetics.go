@@ -19,11 +19,13 @@ const (
 
 // drawAura renders the currently selected aura around Claude
 func (r *Renderer) drawAura(state *AnimationState) {
-	if r.currentAura < 0 || r.currentAura >= len(r.auraNames) {
+	// Use preview aura when modal picker is open
+	auraIdx := r.GetPreviewAura()
+	if auraIdx < 0 || auraIdx >= len(r.auraNames) {
 		return
 	}
 
-	auraName := r.auraNames[r.currentAura]
+	auraName := r.auraNames[auraIdx]
 	time := float32(rl.GetTime())
 	cx := float32(claudeX + spriteFrameWidth)  // Center X
 	cy := float32(claudeY + spriteFrameHeight) // Center Y
@@ -247,41 +249,66 @@ func (r *Renderer) drawAuraFrost(cx, cy, time float32) {
 	}
 }
 
-// drawAuraElectric - Gentle static electricity sparks
+// drawAuraElectric - Crackling yellow lightning aura
 func (r *Renderer) drawAuraElectric(cx, cy, time float32) {
-	// Soft glow around Claude
-	glowAlpha := uint8(80 + 40*math.Sin(float64(time*2.0)))
-	rl.DrawCircle(int32(cx), int32(cy-20), 20, rl.Color{R: 200, G: 220, B: 255, A: glowAlpha / 3})
+	// Bright yellow glow around Claude - larger
+	glowAlpha := uint8(60 + 40*math.Sin(float64(time*4.0)))
+	rl.DrawCircle(int32(cx), int32(cy-20), 38, rl.Color{R: 255, G: 240, B: 100, A: glowAlpha / 5})
+	rl.DrawCircle(int32(cx), int32(cy-20), 28, rl.Color{R: 255, G: 255, B: 150, A: glowAlpha / 3})
 
-	// A few gentle arcs
-	for i := 0; i < 6; i++ {
-		// Only show 2-3 at a time
-		if int(time*3+float32(i)*1.7)%3 != 0 {
+	// Lightning bolts - jagged lines radiating outward
+	for i := 0; i < 10; i++ {
+		// Each bolt appears/disappears randomly
+		boltPhase := math.Sin(float64(time*6.0) + float64(i)*1.3)
+		if boltPhase < 0.3 {
 			continue
 		}
-		angle := float64(time*1.5) + float64(i)*1.05
-		length := 18.0 + 8.0*math.Sin(float64(time*3.0)+float64(i))
+
+		angle := float64(time*2.0) + float64(i)*0.628 // Spread evenly (10 bolts)
+		length := 32.0 + 15.0*math.Sin(float64(time*5.0)+float64(i))
+
+		// Start point near Claude
 		x1 := cx + float32(math.Cos(angle)*8)
 		y1 := cy - 20 + float32(math.Sin(angle)*8)
-		x2 := cx + float32(math.Cos(angle)*length)
-		y2 := cy - 20 + float32(math.Sin(angle)*length)
 
-		// Single gentle arc
-		midX := (x1+x2)/2 + float32(math.Sin(float64(time*5+float32(i)))*3)
-		midY := (y1+y2)/2 + float32(math.Cos(float64(time*5+float32(i)))*3)
+		// Create jagged lightning with 3-4 segments
+		segments := 3 + int(math.Abs(math.Sin(float64(time*3+float32(i)))))
+		prevX, prevY := x1, y1
 
-		rl.DrawLine(int32(x1), int32(y1), int32(midX), int32(midY), rl.Color{R: 180, G: 200, B: 255, A: 200})
-		rl.DrawLine(int32(midX), int32(midY), int32(x2), int32(y2), rl.Color{R: 220, G: 230, B: 255, A: 150})
+		for s := 1; s <= segments; s++ {
+			progress := float64(s) / float64(segments)
+			// Base position along the ray
+			baseX := cx + float32(math.Cos(angle)*length*progress)
+			baseY := cy - 20 + float32(math.Sin(angle)*length*progress)
+			// Add perpendicular jitter for lightning effect
+			perpAngle := angle + math.Pi/2
+			jitter := float32(math.Sin(float64(time*15.0)+float64(i)+float64(s)*2.0)) * 6
+			nextX := baseX + float32(math.Cos(perpAngle))*jitter
+			nextY := baseY + float32(math.Sin(perpAngle))*jitter
+
+			// Draw bolt segment - bright yellow core with white highlight
+			alpha := uint8(float64(255) * (1.0 - progress*0.3) * boltPhase)
+			rl.DrawLine(int32(prevX), int32(prevY), int32(nextX), int32(nextY), rl.Color{R: 255, G: 255, B: 200, A: alpha})
+			// Glow around bolt
+			rl.DrawLine(int32(prevX-1), int32(prevY), int32(nextX-1), int32(nextY), rl.Color{R: 255, G: 240, B: 80, A: alpha / 2})
+			rl.DrawLine(int32(prevX+1), int32(prevY), int32(nextX+1), int32(nextY), rl.Color{R: 255, G: 240, B: 80, A: alpha / 2})
+
+			prevX, prevY = nextX, nextY
+		}
 	}
 
-	// Small floating spark particles
-	for i := 0; i < 10; i++ {
-		angle := float64(time*2.0) + float64(i)*0.63
-		radius := 15.0 + 10.0*math.Sin(float64(time*1.5)+float64(i)*0.8)
+	// Bright spark particles - more and spread wider
+	for i := 0; i < 16; i++ {
+		angle := float64(time*3.0) + float64(i)*0.39
+		radius := 18.0 + 14.0*math.Sin(float64(time*2.5)+float64(i)*0.9)
 		x := cx + float32(math.Cos(angle)*radius)
 		y := cy - 20 + float32(math.Sin(angle)*radius*0.7)
-		alpha := uint8(150 + 80*math.Sin(float64(time*3.0)+float64(i)))
-		rl.DrawCircle(int32(x), int32(y), 1, rl.Color{R: 200, G: 220, B: 255, A: alpha})
+		alpha := uint8(180 + 75*math.Sin(float64(time*5.0)+float64(i)))
+		// Yellow-white sparks
+		rl.DrawCircle(int32(x), int32(y), 1, rl.Color{R: 255, G: 255, B: 200, A: alpha})
+		if i%3 == 0 {
+			rl.DrawCircle(int32(x), int32(y), 2, rl.Color{R: 255, G: 240, B: 80, A: alpha / 2})
+		}
 	}
 }
 
@@ -395,7 +422,9 @@ func (r *Renderer) drawAuraRainbow(cx, cy, time float32) {
 
 // spawnTrailParticles spawns trail particles when Claude is walking
 func (r *Renderer) spawnTrailParticles(state *AnimationState) {
-	if r.currentTrail < 0 || r.currentTrail >= len(r.trailNames) {
+	// Use preview trail when modal picker is open
+	trailIdx := r.GetPreviewTrail()
+	if trailIdx < 0 || trailIdx >= len(r.trailNames) {
 		return
 	}
 
@@ -409,10 +438,12 @@ func (r *Renderer) spawnTrailParticles(state *AnimationState) {
 		return
 	}
 
-	trailName := r.trailNames[r.currentTrail]
-	// Spawn position behind Claude
-	spawnX := float32(claudeX + spriteFrameWidth - 5)
-	spawnY := float32(claudeY + spriteFrameHeight*2 - 8)
+	trailName := r.trailNames[trailIdx]
+	// Spawn position at Claude's feet (Claude walks right, dust kicks back left)
+	// Actual Claude: y = 160 - 64 + 10 = 106, feet at y = 170 (floor line)
+	// Spawn just above floor behind Claude's center
+	spawnX := float32(claudeX + 15 + rand.Intn(10)) // 143-153, behind Claude's center
+	spawnY := float32(166 + rand.Intn(4))           // 166-170, at/just above foot level
 
 	switch trailName {
 	case "trail_sparkle":
@@ -431,43 +462,46 @@ func (r *Renderer) spawnTrailParticles(state *AnimationState) {
 }
 
 func (r *Renderer) spawnTrailSparkle(x, y float32) {
+	// Golden dust kicked back left from feet
 	p := Particle{
-		X:       x + float32(rand.Intn(10)-5),
-		Y:       y + float32(rand.Intn(6)-3),
-		VX:      float32(rand.Float32()*2 - 1),
-		VY:      float32(rand.Float32()*-2 - 1),
-		Life:    0.8,
-		MaxLife: 0.8,
+		X:       x,
+		Y:       y + float32(rand.Intn(4)-2),
+		VX:      float32(-rand.Float32()*3 - 1),    // Move LEFT (negative)
+		VY:      float32(-rand.Float32()*1.5 - 0.5), // Slight arc up
+		Life:    0.9,
+		MaxLife: 0.9,
 		Color:   rl.Color{R: 255, G: 255, B: 200, A: 255},
-		Size:    1,
+		Size:    3,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }
 
 func (r *Renderer) spawnTrailFlame(x, y float32) {
+	// Fire trail kicked back
 	p := Particle{
-		X:       x + float32(rand.Intn(8)-4),
-		Y:       y + float32(rand.Intn(4)),
-		VX:      float32(rand.Float32()*1 - 0.5),
-		VY:      float32(rand.Float32()*-3 - 1),
-		Life:    0.6,
-		MaxLife: 0.6,
+		X:       x,
+		Y:       y + float32(rand.Intn(3)),
+		VX:      float32(-rand.Float32()*2.5 - 1), // Move LEFT
+		VY:      float32(-rand.Float32()*2 - 1),   // Rise up (fire goes up)
+		Life:    0.7,
+		MaxLife: 0.7,
 		Color:   rl.Color{R: 255, G: uint8(150 + rand.Intn(100)), B: 50, A: 255},
-		Size:    2,
+		Size:    3,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }
 
 func (r *Renderer) spawnTrailFrost(x, y float32) {
+	// Ice crystals scattered back
 	p := Particle{
-		X:       x + float32(rand.Intn(12)-6),
-		Y:       y + float32(rand.Intn(4)),
-		VX:      float32(rand.Float32()*2 - 1),
-		VY:      float32(rand.Float32()*0.5 + 0.2),
+		X:       x,
+		Y:       y + float32(rand.Intn(4)-2),
+		VX:      float32(-rand.Float32()*3 - 0.5), // Move LEFT
+		VY:      float32(-rand.Float32()*1 + 0.3), // Slight float then settle
 		Life:    1.0,
 		MaxLife: 1.0,
-		Color:   rl.Color{R: 150, G: 200, B: 255, A: 200},
-		Size:    1,
+		Color:   rl.Color{R: 150, G: 200, B: 255, A: 220},
+		Size:    3,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }
@@ -476,15 +510,16 @@ func (r *Renderer) spawnTrailHearts(x, y float32) {
 	if rand.Float32() > 0.5 {
 		return // Less frequent
 	}
+	// Hearts float up and back
 	p := Particle{
-		X:       x + float32(rand.Intn(10)-5),
+		X:       x,
 		Y:       y,
-		VX:      float32(rand.Float32()*1 - 0.5),
-		VY:      float32(rand.Float32()*-2 - 0.5),
+		VX:      float32(-rand.Float32()*2 - 0.5), // Drift LEFT
+		VY:      float32(-rand.Float32()*2 - 1),   // Float UP
 		Life:    1.2,
 		MaxLife: 1.2,
 		Color:   rl.Color{R: 255, G: 100, B: 150, A: 255},
-		Size:    2,
+		Size:    3,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }
@@ -496,15 +531,16 @@ func (r *Renderer) spawnTrailPixel(x, y float32) {
 		{R: 100, G: 100, B: 255, A: 255},
 		{R: 255, G: 255, B: 100, A: 255},
 	}
+	// Pixel dust kicked back
 	p := Particle{
-		X:       x + float32(rand.Intn(8)-4),
-		Y:       y + float32(rand.Intn(4)),
-		VX:      float32(rand.Float32()*2 - 1),
-		VY:      float32(rand.Float32()*-1 - 0.5),
-		Life:    0.7,
-		MaxLife: 0.7,
+		X:       x,
+		Y:       y + float32(rand.Intn(3)),
+		VX:      float32(-rand.Float32()*3 - 1),   // Move LEFT
+		VY:      float32(-rand.Float32()*1.5 - 0.3), // Slight arc
+		Life:    0.8,
+		MaxLife: 0.8,
 		Color:   colors[rand.Intn(len(colors))],
-		Size:    1,
+		Size:    2,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }
@@ -512,15 +548,16 @@ func (r *Renderer) spawnTrailPixel(x, y float32) {
 func (r *Renderer) spawnTrailRainbow(x, y float32) {
 	hue := int(math.Mod(float64(rl.GetTime()*180), 360))
 	color := hsvToRGB(hue, 1.0, 1.0)
+	// Rainbow dust kicked back
 	p := Particle{
-		X:       x + float32(rand.Intn(10)-5),
-		Y:       y + float32(rand.Intn(4)),
-		VX:      float32(rand.Float32()*2 - 1),
-		VY:      float32(rand.Float32()*-2 - 0.5),
-		Life:    0.9,
-		MaxLife: 0.9,
+		X:       x,
+		Y:       y + float32(rand.Intn(3)),
+		VX:      float32(-rand.Float32()*3 - 1),  // Move LEFT
+		VY:      float32(-rand.Float32()*1.5 - 0.5), // Arc up
+		Life:    1.0,
+		MaxLife: 1.0,
 		Color:   color,
-		Size:    2,
+		Size:    3,
 	}
 	r.trailParticles = append(r.trailParticles, p)
 }

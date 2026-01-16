@@ -1295,8 +1295,9 @@ func main() {
 			renderer.UpdateScroll(dt)
 		}
 
-		// Update picker animation
+		// Update picker animations
 		renderer.UpdatePickerAnim(dt)
+		renderer.UpdateModalPickerAnim(dt)
 
 		// Handle keyboard input
 		// Chest input takes priority when chest is active
@@ -1315,23 +1316,28 @@ func main() {
 			if rl.IsKeyPressed(rl.KeyEnter) || rl.IsKeyPressed(rl.KeySpace) {
 				gameState.ActiveChest.SkipToReveal()
 			}
-		} else {
-			// Normal input: Up/Down = switch row, Left/Right = cycle value
-			if rl.IsKeyPressed(rl.KeyUp) {
-				renderer.SwitchRow(-1)
-			}
-			if rl.IsKeyPressed(rl.KeyDown) {
-				renderer.SwitchRow(1)
-			}
+		} else if renderer.IsModalPickerOpen() {
+			// Strip picker input: Left/Right = switch slot, Up/Down = cycle item
 			if rl.IsKeyPressed(rl.KeyLeft) {
-				renderer.CycleActive(-1)
+				renderer.ModalPickerNavigate(-1, 0)
 			}
 			if rl.IsKeyPressed(rl.KeyRight) {
-				renderer.CycleActive(1)
+				renderer.ModalPickerNavigate(1, 0)
 			}
-			// Toggle picker visibility with Tab
+			if rl.IsKeyPressed(rl.KeyUp) {
+				renderer.ModalPickerNavigate(0, -1)
+			}
+			if rl.IsKeyPressed(rl.KeyDown) {
+				renderer.ModalPickerNavigate(0, 1)
+			}
+			// Close picker with Tab or Escape
+			if rl.IsKeyPressed(rl.KeyTab) || rl.IsKeyPressed(rl.KeyEscape) {
+				renderer.ToggleModalPicker()
+			}
+		} else {
+			// Normal input: Tab opens picker
 			if rl.IsKeyPressed(rl.KeyTab) {
-				renderer.TogglePicker()
+				renderer.ToggleModalPicker()
 			}
 		}
 
@@ -1340,8 +1346,9 @@ func main() {
 		rl.ClearBackground(rl.Color{R: 24, G: 20, B: 37, A: 255}) // Dark purple bg
 		renderer.Draw(animations.GetState())
 		renderer.DrawGameUI(gameState)
-		renderer.DrawAccessoryPicker()
+		renderer.DrawAccessoryPickerHint() // Small hint at bottom
 		renderer.DrawTreasureChest(gameState)
+		renderer.DrawModalPicker() // Modal overlay on top
 		rl.EndTextureMode()
 
 		// Draw scaled texture to window
