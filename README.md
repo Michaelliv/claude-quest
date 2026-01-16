@@ -1,12 +1,12 @@
 # Claude Quest
 
+<p align="center">
+  <img src="assets/hero.gif" alt="Claude Quest" width="600">
+</p>
+
 **For Claude Code users who want to actually see what their AI is doing.**
 
 Instead of watching text scroll by in a terminal, Claude Quest shows you a pixel-art character that reacts to every action in real-time. Reading files? Casting a spell. Running bash? Swinging into battle. Error? Taking damage. Success? Victory dance.
-
-<p align="center">
-  <img src="assets/screenshot.png" alt="Claude Quest screenshot" width="600">
-</p>
 
 ```bash
 npm install -g claude-quest
