@@ -965,23 +965,46 @@ func runDoctor() {
 	fmt.Println()
 	fmt.Println("Assets:")
 
-	assetChecks := []struct {
+	// Check required files
+	fileChecks := []struct {
 		name string
 		path string
 	}{
-		{"Sprite sheet", "claude/spritesheet.png"},
-		{"Wizard hat", "accessories/hats/wizard.png"},
-		{"Party hat", "accessories/hats/party.png"},
-		{"Deal-with-it glasses", "accessories/faces/dealwithit.png"},
+		{"Main spritesheet", "claude/spritesheet.png"},
+		{"Mini spritesheet", "claude/mini_spritesheet.png"},
+		{"Enemy spritesheet", "enemies/enemy_spritesheet.png"},
+		{"Treasure chest", "ui/chest.png"},
 	}
 
-	for _, check := range assetChecks {
+	for _, check := range fileChecks {
 		assetPath := getAssetPathForDoctor(check.path)
 		if _, err := os.Stat(assetPath); err == nil {
 			fmt.Printf("  [OK] %s\n", check.name)
 		} else {
 			fmt.Printf("  [!!] %s not found\n", check.name)
 			fmt.Printf("       Looked in: %s\n", assetPath)
+			allGood = false
+		}
+	}
+
+	// Check asset directories
+	dirChecks := []struct {
+		name string
+		path string
+	}{
+		{"Hats", "accessories/hats"},
+		{"Faces", "accessories/faces"},
+		{"Effects", "effects"},
+	}
+
+	for _, check := range dirChecks {
+		dirPath := getAssetPathForDoctor(check.path)
+		files, err := filepath.Glob(filepath.Join(dirPath, "*.png"))
+		if err == nil && len(files) > 0 {
+			fmt.Printf("  [OK] %s (%d found)\n", check.name, len(files))
+		} else {
+			fmt.Printf("  [!!] %s not found\n", check.name)
+			fmt.Printf("       Looked in: %s\n", dirPath)
 			allGood = false
 		}
 	}
