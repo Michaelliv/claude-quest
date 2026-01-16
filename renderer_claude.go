@@ -245,7 +245,7 @@ func (r *Renderer) drawHat(state *AnimationState) {
 		// Zeus hair is a wig that frames the face with beard below
 		// Scale wider to wrap around head properly
 		hatW = hatW * 1.4
-		spriteHeadY := float32(7) // Align with top of head
+		spriteHeadY := float32(6) // Align with top of head
 		hatX = claudeX + scaledW/2 - hatW/2 + headOffX*float32(claudeScale)
 		hatY = claudeY + (spriteHeadY+headOffY)*float32(claudeScale)
 	} else {

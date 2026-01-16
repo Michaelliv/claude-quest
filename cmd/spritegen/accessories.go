@@ -842,29 +842,28 @@ func generateZeusHair() [][]C {
 	sd := C{200, 200, 215, 255}  // silver dark (inner shadows)
 	sdd := C{170, 170, 190, 255} // silver deeper (deepest shadow near face)
 
-	// Flowing mane - asymmetric, heavier on left, frames the face
+	// Flowing mane - symmetric, frames the face evenly
 	// Dark inner edges (near face hole), bright outer edges
 	return [][]C{
-		// Top of head - gentle wave, not spiky
-		{X, X, X, X, o, o, o, o, o, o, o, o, o, X, X, X},
-		{X, X, o, o, w, w, s, s, s, s, w, w, o, o, X, X},
-		{X, o, w, s, s, sd, sd, sd, sd, sd, s, s, w, o, X, X},
-		// Hair flows down on sides - left side longer (asymmetry)
-		{o, w, s, sd, sdd, sdd, sdd, sdd, sdd, sdd, sd, s, w, o, X, X},
-		{o, w, s, sdd, sdd, sd, sd, sd, sd, sdd, sdd, sd, s, w, o, X},
-		{o, w, s, sdd, X, X, X, X, X, X, sdd, sd, s, w, o, X},
-		{o, w, sd, sdd, X, X, X, X, X, X, X, sdd, s, w, o, X},
-		// Left lock flows longer (asymmetric)
-		{o, s, sd, sdd, X, X, X, X, X, X, X, sdd, sd, s, o, X},
-		{o, s, sdd, X, X, X, X, X, X, X, X, X, sdd, s, o, X},
-		{o, sd, sdd, X, X, X, X, X, X, X, X, X, X, sd, o, X},
-		// Left side continues down, right side ends (asymmetry)
-		{o, sd, sdd, X, X, X, X, X, X, X, X, X, X, X, o, o},
-		{o, sdd, X, X, X, X, X, X, X, X, X, X, X, X, X, o},
-		{X, o, X, X, X, X, X, X, X, X, X, X, X, X, X, X},
-		// Beard wisps at bottom
-		{X, X, X, X, X, X, o, s, sd, s, o, X, X, X, X, X},
-		{X, X, X, X, X, X, o, sd, sdd, sd, o, X, X, X, X, X},
-		{X, X, X, X, X, X, X, o, sd, o, X, X, X, X, X, X},
+		// Top of head - two LARGE round hills with slim valley (rounded corners)
+		{X, X, o, o, o, o, X, X, X, X, o, o, o, o, X, X},
+		{X, o, w, w, w, w, o, X, X, o, w, w, w, w, o, X},
+		{o, w, w, s, s, s, w, o, o, w, s, s, s, w, w, o},
+		{o, w, s, s, sd, sd, s, o, o, s, sd, sd, s, s, w, o},
+		{o, w, s, sd, sd, sd, sd, s, s, sd, sd, sd, sd, s, w, o},
+		// Hair connects below the valley
+		{o, w, s, sd, sdd, sdd, sdd, sdd, sdd, sdd, sdd, sdd, sd, s, w, o},
+		{o, w, s, sdd, sdd, sd, sd, sd, sd, sd, sd, sdd, sdd, s, w, o},
+		{o, w, s, sdd, X, X, X, X, X, X, X, X, sdd, s, w, o},
+		{o, w, sd, sdd, X, X, X, X, X, X, X, X, sdd, sd, w, o},
+		// Both sides flow down equally
+		{o, s, sd, sdd, X, X, X, X, X, X, X, X, sdd, sd, s, o},
+		{o, s, sdd, X, X, X, X, X, X, X, X, X, X, sdd, s, o},
+		{o, sd, sdd, X, X, X, X, X, X, X, X, X, X, sdd, sd, o},
+		{o, sdd, X, X, X, X, X, X, X, X, X, X, X, X, sdd, o},
+		// Beard wisps - moved up
+		{X, o, X, X, X, o, s, sd, sd, sd, s, o, X, X, o, X},
+		{X, X, X, X, X, o, sd, sdd, sdd, sdd, sd, o, X, X, X, X},
+		{X, X, X, X, X, X, o, sd, sd, sd, o, X, X, X, X, X},
 	}
 }
