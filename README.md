@@ -10,10 +10,15 @@ Instead of watching text scroll by in a terminal, Claude Quest shows you a pixel
 
 ```bash
 npm install -g claude-quest
+```
+
+Then, in a **new terminal tab** in the same directory where you run Claude Code:
+
+```bash
 cq
 ```
 
-That's it. Open it alongside Claude Code and watch your coding session come alive.
+That's it. Keep it running alongside Claude Code and watch your coding session come alive.
 
 ---
 
@@ -45,6 +50,7 @@ Every Claude Code action becomes an animation:
 | Extended thinking | Intense focus + particle effects |
 | Success | Victory dance |
 | Error | Taking damage (recovers!) |
+| Git push | SHIPPED! rainbow banner |
 
 ### Five Biomes
 
@@ -60,7 +66,11 @@ Claude walks through beautiful parallax backgrounds that cycle every 20 seconds:
 Shows your remaining context window. Starts full at 200k tokens and drains as your conversation grows. When Claude compacts, it refills. Satisfying.
 
 ### Customization
-Hats and accessories. Wizard hat, crown, deal-with-it sunglasses. Because why not.
+Unlock cosmetics as you level up by using Claude Code:
+- **Hats** - Wizard hat, crown, viking helmet, and more
+- **Faces** - Sunglasses, monocle, mustaches
+- **Auras** - Flame, frost, electric, rainbow particle effects
+- **Trails** - Sparkles, fire, hearts that follow Claude when walking
 
 ---
 
@@ -78,13 +88,16 @@ npm install -g claude-quest
 
 ## Usage
 
+**Important:** Run `cq` in a new terminal tab, in the same directory where you're running Claude Code.
+
 ```bash
-cq              # Watch current project
-cq demo         # See all animations (no Claude Code needed)
-cq watch ~/dir  # Watch specific project
+cq                    # Watch current project
+cq watch ~/dir        # Watch specific project
+cq replay <file.jsonl> # Replay an existing conversation
+cq doctor             # Check if Claude Quest can run properly
 ```
 
-**Controls:** `Tab` open accessory picker, `←→` switch slots, `↑↓` cycle items
+**Controls:** Press `Tab` to open the accessory picker. Use `←→` to switch between slots (Hat/Face/Aura/Trail), `↑↓` to cycle items. Press `Tab` or `Esc` to close.
 
 ---
 
@@ -110,7 +123,7 @@ Inspired by [Paul Robertson's](http://probertson.tumblr.com/) legendary pixel ar
 Community project. Not affiliated with Anthropic.
 
 **Works without Claude Code?**
-Yes. `cq demo` runs standalone.
+You can replay saved conversations with `cq replay <file.jsonl>`, but live mode requires an active Claude Code session.
 
 **Why does this exist?**
 Because staring at terminal text for hours is less fun than watching a pixel wizard battle bugs.
@@ -137,14 +150,18 @@ Studio mode is a development environment for working on sprites and animations. 
 go build -tags debug -o cq . && ./cq studio
 ```
 
-Features:
-- **Animation picker** (`A`) - Select and loop any animation
-- **Biome picker** (`B`) - Switch between all 5 biomes
-- **Cosmetics picker** (`C`/`Tab`) - Browse hats, faces, auras, trails
-- **Frame stepping** - Pause (`Space`) and step through frames (`<` `>`)
-- **Speed control** (`-` `+`) - Slow down to 0.125x or speed up to 4x
-- **Hot reload** - Edit PNGs and see changes instantly, `R` to force reload
-- **Sprite regeneration** (`G`) - Regenerate sprites from `cmd/spritegen`
+**Controls:**
+- `Space` - Pause/play animation
+- `< >` or arrow keys - Step frame (when paused)
+- `- +` - Speed down/up (0.125x to 4x)
+- `A` - Animation picker
+- `B` - Biome picker
+- `C` or `Tab` - Cosmetics picker (Tab cycles Hat → Face → Aura → Trail)
+- `R` - Force reload all textures
+- `G` - Regenerate sprites from `cmd/spritegen`
+- `H` - Toggle help overlay
+
+**Inside pickers:** `↑↓` to navigate, `Enter` to select, `Esc` to cancel
 
 See [CLAUDE.md](CLAUDE.md) for full architecture details.
 
