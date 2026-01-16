@@ -72,12 +72,20 @@ type FlyingEnemy struct {
 	Impact  float32 // Impact effect timer (> 0 means showing impact)
 }
 
+// FloatingXP represents a floating "+XP" indicator
+type FloatingXP struct {
+	Amount  int
+	X, Y    float32
+	Timer   float32
+	MaxLife float32
+}
+
 // GameState tracks UI state for quest text, mana bar, todos
 type GameState struct {
 	// Quest display
-	QuestText   string
-	QuestTimer  float32
-	QuestFade   float32
+	QuestText  string
+	QuestTimer float32
+	QuestFade  float32
 
 	// Mana bar (context window)
 	ManaTotal   int
@@ -85,7 +93,7 @@ type GameState struct {
 	ManaDisplay float32 // Smoothly animated value
 
 	// Todos
-	Todos       []TodoItem
+	Todos []TodoItem
 
 	// Effects
 	ThinkHardActive bool
@@ -116,13 +124,31 @@ type GameState struct {
 	// SHIPPED! rainbow effect (git push celebration)
 	ShippedActive bool    // Whether the SHIPPED effect is playing
 	ShippedTimer  float32 // Animation timer
+
+	// Progression system
+	Profile *CareerProfile // Persistent career data
+	Session SessionStats   // Current session stats
+
+	// Level up / chest state
+	PendingLevelUp    bool            // True when level up occurred, triggers chest
+	PendingBonusChest bool            // True when bonus chest triggered
+	BonusChestReason  string          // Why bonus chest was triggered
+	ActiveChest       *TreasureChest  // Currently active treasure chest (nil if none)
+
+	// Floating XP indicators
+	FloatingXPs []FloatingXP
 }
 
 // NewGameState creates a new game state
 func NewGameState() *GameState {
+	profile := LoadProfile()
+	profile.SessionsStarted++
+	profile.Save()
+
 	return &GameState{
 		ManaMax:     maxTokens,
 		ManaDisplay: 0,
+		Profile:     profile,
 	}
 }
 
@@ -233,6 +259,84 @@ func (g *GameState) Update(dt float32) {
 
 	// Update flying enemies
 	g.updateFlyingEnemies(dt)
+
+	// Update flow meter decay (only decays when no activity)
+	if g.Profile != nil {
+		if g.Session.FlowDecayTimer > 0 {
+			g.Session.FlowDecayTimer += dt
+		}
+		if g.Session.FlowDecayTimer > 5.0 {
+			g.Session.FlowMeter -= dt * 0.03
+			if g.Session.FlowMeter < 0 {
+				g.Session.FlowMeter = 0
+			}
+		}
+	}
+
+	// Update floating XP indicators
+	g.updateFloatingXPs(dt)
+
+	// Spawn treasure chest if pending and no active chest
+	if g.ActiveChest == nil {
+		if g.PendingLevelUp {
+			g.ActiveChest = NewLevelUpChest(g.Profile)
+			g.PendingLevelUp = false
+		} else if g.PendingBonusChest {
+			g.ActiveChest = NewBonusChest(g.Profile, g.BonusChestReason)
+			g.PendingBonusChest = false
+			g.BonusChestReason = ""
+		}
+	}
+
+	// Update active chest
+	if g.ActiveChest != nil {
+		g.ActiveChest.Update(dt)
+
+		// Handle chest completion
+		if g.ActiveChest.IsDone() {
+			if g.ActiveChest.ClaimedItem != nil {
+				g.Profile.ClaimItem(g.ActiveChest.ClaimedItem.ID)
+				g.Profile.Save()
+			} else if !g.ActiveChest.HasItems() {
+				// Empty pool - grant bonus XP instead
+				g.Profile.AddXP(500)
+				g.Profile.Save()
+				g.SpawnFloatingXP(500)
+			}
+			g.ActiveChest = nil
+		}
+	}
+}
+
+// SpawnFloatingXP creates a new floating XP indicator above Claude's head
+func (g *GameState) SpawnFloatingXP(amount int) {
+	// Spawn position: above Claude's head with some randomness
+	baseX := float32(screenWidth/2 - 10)
+	baseY := float32(70) // Above Claude
+	offsetX := float32((len(g.FloatingXPs) % 3) - 1) * 15 // Spread out if multiple
+
+	g.FloatingXPs = append(g.FloatingXPs, FloatingXP{
+		Amount:  amount,
+		X:       baseX + offsetX,
+		Y:       baseY,
+		Timer:   0,
+		MaxLife: 1.5, // 1.5 seconds to float and fade
+	})
+}
+
+// updateFloatingXPs updates floating XP indicator animations
+func (g *GameState) updateFloatingXPs(dt float32) {
+	alive := g.FloatingXPs[:0]
+	for i := range g.FloatingXPs {
+		xp := &g.FloatingXPs[i]
+		xp.Timer += dt
+		xp.Y -= dt * 25 // Float upward
+
+		if xp.Timer < xp.MaxLife {
+			alive = append(alive, *xp)
+		}
+	}
+	g.FloatingXPs = alive
 }
 
 // Mini Claude animation frame counts: Spawn=8, Idle=8, Walk=8, Poof=6
@@ -518,11 +622,120 @@ func (g *GameState) HandleEvent(event Event) {
 	if event.Type != EventIdle {
 		g.LastActivityTime = 0
 		g.IsActive = true
+
+		// Update flow meter on activity
+		if g.Profile != nil {
+			g.Session.FlowDecayTimer = 0.001 // Start decay timer (small non-zero to indicate active)
+			g.Session.FlowMeter += 0.05
+			if g.Session.FlowMeter >= 1.0 {
+				g.Session.FlowMeter = 1.0
+				if !g.Session.FlowPeakReached {
+					g.Session.FlowPeakReached = true
+					// Grant XP for flow peak
+					if g.Profile.RecordFlowPeak() {
+						g.PendingLevelUp = true
+					}
+					g.Profile.Save()
+				}
+			}
+			g.Session.TotalToolCalls++
+		}
 	}
 
 	// Update mana from token usage
 	if event.TokenUsage != nil {
 		g.ManaTotal = event.TokenUsage.Total()
+		if g.Profile != nil {
+			g.Profile.RecordTokens(event.TokenUsage.Total())
+		}
+	}
+
+	// Track progression based on event type
+	if g.Profile != nil {
+		leveledUp := false
+
+		switch event.Type {
+		case EventReading:
+			g.Session.Reads++
+			leveledUp = g.Profile.RecordRead()
+			g.SpawnFloatingXP(XPRead)
+
+		case EventWriting:
+			g.Session.Writes++
+			leveledUp = g.Profile.RecordWrite()
+			g.SpawnFloatingXP(XPWrite)
+
+		case EventBash:
+			success := !event.IsError
+			g.Session.RecordBashResult(success)
+			leveledUp = g.Profile.RecordBash(success, g.Session.CurrentBashStreak)
+			if success {
+				xp := XPBashSuccess
+				if g.Session.CurrentBashStreak > 1 {
+					xp += XPStreakBonus
+				}
+				g.SpawnFloatingXP(xp)
+			} else {
+				g.SpawnFloatingXP(XPBashFail)
+			}
+
+		case EventThinkHard:
+			leveledUp = g.Profile.RecordThinking(event.ThinkLevel)
+			xp := XPThinkNormal
+			switch event.ThinkLevel {
+			case ThinkHard:
+				xp = XPThinkHard
+			case ThinkHarder:
+				xp = XPThinkHard + XPThinkBonus
+			case ThinkUltra:
+				xp = XPThinkHard + XPThinkBonus*2
+			}
+			g.SpawnFloatingXP(xp)
+
+		case EventAgentComplete:
+			leveledUp = g.Profile.RecordAgentComplete()
+			g.SpawnFloatingXP(XPAgentComplete)
+
+		case EventTodoUpdate:
+			// Count newly completed todos
+			if event.TodoItems != nil {
+				for _, todo := range event.TodoItems {
+					if todo.Status == "completed" {
+						// Check if this is a new completion
+						wasCompleted := false
+						for _, oldTodo := range g.Todos {
+							if oldTodo.Content == todo.Content && oldTodo.Status == "completed" {
+								wasCompleted = true
+								break
+							}
+						}
+						if !wasCompleted {
+							g.Session.TodosCompleted++
+							if g.Profile.RecordTodoComplete() {
+								leveledUp = true
+							}
+							g.SpawnFloatingXP(XPTodoComplete)
+						}
+					}
+				}
+			}
+		}
+
+		if leveledUp {
+			g.PendingLevelUp = true
+		}
+
+		// Check for bonus chest triggers
+		if !g.Session.BonusChestAwarded {
+			if triggered, reason := g.Session.CheckBonusChest(); triggered {
+				g.PendingBonusChest = true
+				g.BonusChestReason = reason
+				g.Profile.BonusChestsFound++
+			}
+		}
+
+		// Save profile after changes
+		g.Profile.Save()
 	}
 
 	// Throw tool name for tool events
@@ -648,7 +861,7 @@ Usage:
   cq                    Watch the current directory's latest conversation
   cq watch [dir]        Watch a specific directory's conversation
   cq replay <file>      Replay an existing conversation JSONL file
-  cq demo               Cycle through all animations (demo mode)
+  cq studio             Studio mode - asset dev environment (requires -tags debug build)
   cq doctor             Check if Claude Quest can run properly
 
 Options:
@@ -659,7 +872,7 @@ Examples:
   cq                                    # Watch current project
   cq watch ~/Projects/myapp             # Watch specific project
   cq replay ~/.claude/projects/-Users-me-Projects-myapp/abc123.jsonl
-  cq demo                               # See all animations`)
+  go build -tags debug && ./cq studio   # Studio mode for asset development`)
 }
 
 // runDoctor checks if all requirements for Claude Quest are met
@@ -924,194 +1137,6 @@ var animationNames = []string{
 	"Writing (Edit)", "Victory", "Hurt (Error)", "Thinking",
 }
 
-func runDemo() {
-	fmt.Println("Demo mode - cycling through all animations")
-	fmt.Println("Keys: Q=quest, M=mana, C=compact, W=walk mode, Tab=picker")
-	fmt.Println("Think: 1=think, 2=think hard, 3=think harder, 4=ULTRATHINK")
-	fmt.Println("Agents: A=spawn mini agent, P=poof mini agent")
-	fmt.Println("Enemies: B=bug, E=error, L=low context")
-
-	// Enable resizable window
-	rl.SetConfigFlags(rl.FlagWindowResizable)
-
-	// Initialize raylib window
-	rl.InitWindow(screenWidth*windowScale, screenHeight*windowScale, windowTitle+" - Demo")
-	defer rl.CloseWindow()
-
-	rl.SetTargetFPS(60)
-
-	target := rl.LoadRenderTexture(screenWidth, screenHeight)
-	defer rl.UnloadRenderTexture(target)
-
-	config := LoadConfig("config.json")
-	config.Debug = false // Disable debug info in demo
-	renderer := NewRenderer(config)
-	animations := NewAnimationSystem()
-	gameState := NewGameState()
-
-	currentAnim := 0
-	animTimer := float32(0)
-	animDuration := float32(2.0) // Show each animation for 2 seconds
-
-	// Demo quests
-	demoQuests := []string{
-		"help me implement user authentication",
-		"fix the bug in the login form",
-		"add dark mode support",
-		"optimize database queries",
-	}
-	questIndex := 0
-
-	// Start with first animation
-	animations.HandleEvent(Event{Type: EventType(currentAnim)})
-
-	for !rl.WindowShouldClose() {
-		dt := rl.GetFrameTime()
-		animTimer += dt
-
-		// Switch animation every 2 seconds
-		if animTimer >= animDuration {
-			animTimer = 0
-			currentAnim = (currentAnim + 1) % 9
-
-			// Map demo index to event type
-			eventTypes := []EventType{
-				EventIdle, EventSystemInit, EventReading, EventBash,
-				EventWriting, EventSuccess, EventError, EventThinking,
-				EventVictoryPose,
-			}
-			event := Event{Type: eventTypes[currentAnim]}
-
-			// Add token usage to some events
-			if currentAnim > 0 {
-				event.TokenUsage = &TokenUsage{
-					InputTokens:         10000 + currentAnim*15000,
-					CacheReadTokens:     20000 + currentAnim*10000,
-					CacheCreationTokens: 5000,
-				}
-			}
-
-			animations.HandleEvent(event)
-			gameState.HandleEvent(event)
-		}
-
-		animations.Update(dt)
-		gameState.Update(dt)
-		renderer.UpdateScroll(dt)
-		renderer.UpdatePickerAnim(dt)
-
-		// Handle keyboard input for accessories
-		if rl.IsKeyPressed(rl.KeyUp) {
-			renderer.SwitchRow(-1)
-		}
-		if rl.IsKeyPressed(rl.KeyDown) {
-			renderer.SwitchRow(1)
-		}
-		// Toggle walk mode
-		if rl.IsKeyPressed(rl.KeyW) {
-			renderer.ToggleWalkMode()
-			animations.SetWalkMode(renderer.IsWalkMode())
-		}
-		// Toggle picker visibility
-		if rl.IsKeyPressed(rl.KeyTab) {
-			renderer.TogglePicker()
-		}
-		if rl.IsKeyPressed(rl.KeyLeft) {
-			renderer.CycleActive(-1)
-			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
-		}
-		if rl.IsKeyPressed(rl.KeyRight) {
-			renderer.CycleActive(1)
-			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
-		}
-
-		// Demo triggers
-		if rl.IsKeyPressed(rl.KeyQ) {
-			// Show quest
-			gameState.HandleEvent(Event{
-				Type:    EventQuest,
-				Details: demoQuests[questIndex%len(demoQuests)],
-			})
-			questIndex++
-		}
-		if rl.IsKeyPressed(rl.KeyM) {
-			// Increase mana
-			gameState.ManaTotal += 25000
-			if gameState.ManaTotal > gameState.ManaMax {
-				gameState.ManaTotal = 25000
-			}
-		}
-		// Think levels: 1, 2, 3, 4
-		if rl.IsKeyPressed(rl.KeyOne) {
-			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "really think about this", ThinkLevel: ThinkNormal})
-			animations.HandleEvent(Event{Type: EventThinkHard})
-		}
-		if rl.IsKeyPressed(rl.KeyTwo) {
-			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "think hard about this problem", ThinkLevel: ThinkHard})
-			animations.HandleEvent(Event{Type: EventThinkHard})
-		}
-		if rl.IsKeyPressed(rl.KeyThree) {
-			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "think harder! this is complex", ThinkLevel: ThinkHarder})
-			animations.HandleEvent(Event{Type: EventThinkHard})
-		}
-		if rl.IsKeyPressed(rl.KeyFour) {
-			gameState.HandleEvent(Event{Type: EventThinkHard, Details: "ULTRATHINK mode activated!", ThinkLevel: ThinkUltra})
-			animations.HandleEvent(Event{Type: EventThinkHard})
-		}
-		if rl.IsKeyPressed(rl.KeyC) {
-			// Compact effect
-			gameState.HandleEvent(Event{Type: EventCompact})
-			animations.HandleEvent(Event{Type: EventCompact})
-		}
-		// Mini agent demo triggers
-		if rl.IsKeyPressed(rl.KeyA) {
-			// Spawn a mini agent
-			agentTypes := []string{"Explore", "Plan", "Bash", "claude-code-guide"}
-			agentType := agentTypes[int(randFloat()*float32(len(agentTypes)))]
-			gameState.HandleEvent(Event{Type: EventSpawnAgent, Details: "Agent: " + agentType})
-			animations.HandleEvent(Event{Type: EventSpawnAgent})
-		}
-		if rl.IsKeyPressed(rl.KeyP) {
-			// Poof a mini agent
-			gameState.PoofMiniAgent("")
-		}
-		// Enemy spawn keys
-		if rl.IsKeyPressed(rl.KeyB) {
-			gameState.SpawnEnemy(EnemyBug)
-		}
-		if rl.IsKeyPressed(rl.KeyE) {
-			gameState.SpawnEnemy(EnemyError)
-		}
-		if rl.IsKeyPressed(rl.KeyL) {
-			gameState.SpawnEnemy(EnemyLowContext)
-		}
-		// Victory pose
-		if rl.IsKeyPressed(rl.KeyV) {
-			animations.HandleEvent(Event{Type: EventVictoryPose})
-		}
-		// SHIPPED! effect (git push celebration)
-		if rl.IsKeyPressed(rl.KeyS) {
-			gameState.HandleEvent(Event{Type: EventGitPush})
-			animations.HandleEvent(Event{Type: EventVictoryPose})
-		}
-
-		// Render
-		rl.BeginTextureMode(target)
-		rl.ClearBackground(rl.Color{R: 24, G: 20, B: 37, A: 255})
-		renderer.Draw(animations.GetState())
-		renderer.DrawGameUI(gameState)
-		renderer.DrawAccessoryPicker()
-		rl.EndTextureMode()
-
-		rl.BeginDrawing()
-		rl.ClearBackground(rl.Black)
-		sourceRec := rl.Rectangle{X: 0, Y: float32(screenHeight), Width: float32(screenWidth), Height: -float32(screenHeight)}
-		destRec := getScaledDestRect()
-		rl.DrawTexturePro(target.Texture, sourceRec, destRec, rl.Vector2{}, 0, rl.White)
-		rl.EndDrawing()
-	}
-}
-
 func main() {
 	watcher := NewWatcher()
 	var err error
@@ -1134,8 +1159,8 @@ func main() {
 			printUsage()
 			os.Exit(0)
 
-		case "demo":
-			runDemo()
+		case "studio":
+			runStudio()
 			os.Exit(0)
 
 		case "doctor":
@@ -1216,6 +1241,7 @@ func main() {
 	renderer := NewRenderer(config)
 	animations := NewAnimationSystem()
 	gameState := NewGameState()
+	renderer.SetProfile(gameState.Profile)
 
 	for !rl.WindowShouldClose() {
 		dt := rl.GetFrameTime()
@@ -1249,30 +1275,41 @@ func main() {
 		// Update picker animation
 		renderer.UpdatePickerAnim(dt)
 
-		// Handle keyboard input for accessories
-		// Up/Down = switch row, Left/Right = cycle value
-		if rl.IsKeyPressed(rl.KeyUp) {
-			renderer.SwitchRow(-1)
-		}
-		if rl.IsKeyPressed(rl.KeyDown) {
-			renderer.SwitchRow(1)
-		}
-		if rl.IsKeyPressed(rl.KeyLeft) {
-			renderer.CycleActive(-1)
-			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
-		}
-		if rl.IsKeyPressed(rl.KeyRight) {
-			renderer.CycleActive(1)
-			animations.SetWalkMode(renderer.IsWalkMode()) // Sync walk mode
-		}
-		// Toggle walk mode with W
-		if rl.IsKeyPressed(rl.KeyW) {
-			renderer.ToggleWalkMode()
-			animations.SetWalkMode(renderer.IsWalkMode())
-		}
-		// Toggle picker visibility with Tab
-		if rl.IsKeyPressed(rl.KeyTab) {
-			renderer.TogglePicker()
+		// Handle keyboard input
+		// Chest input takes priority when chest is active
+		if gameState.ActiveChest != nil && gameState.ActiveChest.IsInteractive() {
+			if rl.IsKeyPressed(rl.KeyLeft) {
+				gameState.ActiveChest.SelectPrev()
+			}
+			if rl.IsKeyPressed(rl.KeyRight) {
+				gameState.ActiveChest.SelectNext()
+			}
+			if rl.IsKeyPressed(rl.KeyEnter) || rl.IsKeyPressed(rl.KeySpace) {
+				gameState.ActiveChest.ConfirmSelection()
+			}
+		} else if gameState.ActiveChest != nil {
+			// Skip chest animation with any key
+			if rl.IsKeyPressed(rl.KeyEnter) || rl.IsKeyPressed(rl.KeySpace) {
+				gameState.ActiveChest.SkipToReveal()
+			}
+		} else {
+			// Normal input: Up/Down = switch row, Left/Right = cycle value
+			if rl.IsKeyPressed(rl.KeyUp) {
+				renderer.SwitchRow(-1)
+			}
+			if rl.IsKeyPressed(rl.KeyDown) {
+				renderer.SwitchRow(1)
+			}
+			if rl.IsKeyPressed(rl.KeyLeft) {
+				renderer.CycleActive(-1)
+			}
+			if rl.IsKeyPressed(rl.KeyRight) {
+				renderer.CycleActive(1)
+			}
+			// Toggle picker visibility with Tab
+			if rl.IsKeyPressed(rl.KeyTab) {
+				renderer.TogglePicker()
+			}
 		}
 
 		// Render to texture at native resolution
@@ -1281,6 +1318,7 @@ func main() {
 		renderer.Draw(animations.GetState())
 		renderer.DrawGameUI(gameState)
 		renderer.DrawAccessoryPicker()
+		renderer.DrawTreasureChest(gameState)
 		rl.EndTextureMode()
 
 		// Draw scaled texture to window

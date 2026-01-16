@@ -50,6 +50,7 @@ type AnimationSystem struct {
 	animLengths   map[AnimationType]int
 	walkMode      bool // When true and active, default to walk instead of idle
 	isActive      bool // When true, there's recent activity (events coming in)
+	loopMode      bool // When true, animations loop instead of returning to idle
 }
 
 // NewAnimationSystem creates a new animation system
@@ -61,6 +62,7 @@ func NewAnimationSystem() *AnimationSystem {
 			Timer:       0,
 			Queue:       make([]AnimationType, 0),
 		},
+		walkMode:      true, // Always in Quest mode - walk when active
 		frameDuration: 0.042, // 24 FPS for smooth animation
 		animLengths: map[AnimationType]int{
 			AnimIdle:        16,
@@ -174,6 +176,9 @@ func (a *AnimationSystem) onAnimationComplete() {
 		a.state.CurrentAnim = a.state.Queue[0]
 		a.state.Queue = a.state.Queue[1:]
 		a.state.Frame = 0
+	} else if a.loopMode {
+		// Loop mode: restart the same animation
+		a.state.Frame = 0
 	} else {
 		// Return to walk if in active walk mode, otherwise idle
 		if a.walkMode && a.isActive {
@@ -183,6 +188,11 @@ func (a *AnimationSystem) onAnimationComplete() {
 		}
 		a.state.Frame = 0
 	}
+}
+
+// SetLoopMode enables/disables loop mode (for studio)
+func (a *AnimationSystem) SetLoopMode(enabled bool) {
+	a.loopMode = enabled
 }
 
 // SetWalkMode enables/disables walk mode (Quest mode)
@@ -210,4 +220,42 @@ func (a *AnimationSystem) SetActive(active bool) {
 // GetState returns the current animation state for rendering
 func (a *AnimationSystem) GetState() *AnimationState {
 	return a.state
+}
+
+// SetFrame sets the current frame directly (for debug stepping)
+func (a *AnimationSystem) SetFrame(frame int) {
+	animLen := a.animLengths[a.state.CurrentAnim]
+	if frame < 0 {
+		frame = animLen - 1
+	} else if frame >= animLen {
+		frame = 0
+	}
+	a.state.Frame = frame
+	a.state.Timer = 0
+}
+
+// StepFrame advances or rewinds by one frame (for debug stepping)
+func (a *AnimationSystem) StepFrame(delta int) {
+	a.SetFrame(a.state.Frame + delta)
+}
+
+// SetAnimation sets the current animation directly (for debug)
+func (a *AnimationSystem) SetAnimation(anim AnimationType) {
+	a.state.CurrentAnim = anim
+	a.state.Frame = 0
+	a.state.Timer = 0
+	a.state.Queue = nil // Clear queue
+}
+
+// GetAnimationLength returns the frame count for the current animation
+func (a *AnimationSystem) GetAnimationLength() int {
+	return a.animLengths[a.state.CurrentAnim]
+}
+
+// GetAllAnimations returns all available animation types
+func (a *AnimationSystem) GetAllAnimations() []AnimationType {
+	return []AnimationType{
+		AnimIdle, AnimEnter, AnimCasting, AnimAttack, AnimWriting,
+		AnimVictory, AnimHurt, AnimThinking, AnimWalk, AnimVictoryPose,
+	}
 }

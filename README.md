@@ -70,13 +70,6 @@ npm install -g claude-quest
 ### Direct Download
 [GitHub Releases](https://github.com/Michaelliv/claude-quest/releases) - macOS, Linux, Windows
 
-### From Source
-```bash
-git clone https://github.com/Michaelliv/claude-quest.git
-cd claude-quest
-go build -o cq .
-```
-
 ---
 
 ## Usage
@@ -117,6 +110,39 @@ Yes. `cq demo` runs standalone.
 
 **Why does this exist?**
 Because staring at terminal text for hours is less fun than watching a pixel wizard battle bugs.
+
+---
+
+## Development
+
+### Building from Source
+
+```bash
+git clone https://github.com/Michaelliv/claude-quest.git
+cd claude-quest
+go build -o cq .
+```
+
+Requires Go 1.21+ and CGO (Raylib needs C bindings).
+
+### Studio Mode
+
+Studio mode is a development environment for working on sprites and animations. Not included in release builds.
+
+```bash
+go build -tags debug -o cq . && ./cq studio
+```
+
+Features:
+- **Animation picker** (`A`) - Select and loop any animation
+- **Biome picker** (`B`) - Switch between all 5 biomes
+- **Cosmetics picker** (`C`/`Tab`) - Browse hats, faces, auras, trails
+- **Frame stepping** - Pause (`Space`) and step through frames (`<` `>`)
+- **Speed control** (`-` `+`) - Slow down to 0.125x or speed up to 4x
+- **Hot reload** - Edit PNGs and see changes instantly, `R` to force reload
+- **Sprite regeneration** (`G`) - Regenerate sprites from `cmd/spritegen`
+
+See [CLAUDE.md](CLAUDE.md) for full architecture details.
 
 ---
 

@@ -72,6 +72,9 @@ func main() {
 
 	// Generate enemy sprites
 	generateEnemies()
+
+	// Generate treasure chest
+	generateChest()
 }
 
 func drawFrame(img *image.RGBA, anim, frame int) {
