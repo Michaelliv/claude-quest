@@ -11,20 +11,27 @@ import (
 
 // loadHats loads all hat textures from assets/accessories/hats
 func (r *Renderer) loadHats() {
-	hatFiles := []string{
-		"wizard", "party", "headphones", "beret", "tophat",
-		"catears", "crown", "propeller", "pirate", "viking",
-		"chef", "halo", "jester", "cowboy", "fedora",
+	hatsDir := getAssetPath("accessories/hats")
+	entries, err := os.ReadDir(hatsDir)
+	if err != nil {
+		fmt.Printf("Could not read hats directory: %v\n", err)
+		return
 	}
 
-	for _, name := range hatFiles {
-		path := getAssetPath(fmt.Sprintf("accessories/hats/%s.png", name))
-		if _, err := os.Stat(path); err == nil {
-			tex := rl.LoadTexture(path)
-			r.hats = append(r.hats, tex)
-			r.hatNames = append(r.hatNames, name)
-			fmt.Printf("Loaded hat: %s\n", name)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
+		filename := entry.Name()
+		if len(filename) < 5 || filename[len(filename)-4:] != ".png" {
+			continue
+		}
+		name := filename[:len(filename)-4]
+		path := fmt.Sprintf("%s/%s", hatsDir, filename)
+		tex := rl.LoadTexture(path)
+		r.hats = append(r.hats, tex)
+		r.hatNames = append(r.hatNames, name)
+		fmt.Printf("Loaded hat: %s\n", name)
 	}
 }
 
@@ -67,19 +74,27 @@ func (r *Renderer) GetCurrentHatName() string {
 
 // loadFaces loads all face accessory textures
 func (r *Renderer) loadFaces() {
-	faceFiles := []string{
-		"mustache", "dealwithit", "monocle", "pipe", "borat",
-		"eyepatch", "glasses3d", "groucho", "bandana", "wizardbeard",
+	facesDir := getAssetPath("accessories/faces")
+	entries, err := os.ReadDir(facesDir)
+	if err != nil {
+		fmt.Printf("Could not read faces directory: %v\n", err)
+		return
 	}
 
-	for _, name := range faceFiles {
-		path := getAssetPath(fmt.Sprintf("accessories/faces/%s.png", name))
-		if _, err := os.Stat(path); err == nil {
-			tex := rl.LoadTexture(path)
-			r.faces = append(r.faces, tex)
-			r.faceNames = append(r.faceNames, name)
-			fmt.Printf("Loaded face: %s\n", name)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
+		filename := entry.Name()
+		if len(filename) < 5 || filename[len(filename)-4:] != ".png" {
+			continue
+		}
+		name := filename[:len(filename)-4]
+		path := fmt.Sprintf("%s/%s", facesDir, filename)
+		tex := rl.LoadTexture(path)
+		r.faces = append(r.faces, tex)
+		r.faceNames = append(r.faceNames, name)
+		fmt.Printf("Loaded face: %s\n", name)
 	}
 }
 

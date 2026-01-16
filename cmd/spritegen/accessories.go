@@ -31,6 +31,7 @@ func generateAccessories() {
 		"jester":     func() { saveHat("jester", generateJesterCap()) },
 		"cowboy":     func() { saveHat("cowboy", generateCowboyHat()) },
 		"fedora":     func() { saveHat("fedora", generateFedora()) },
+		"zeus":       func() { saveHat("zeus", generateZeusHair()) },
 	}
 	for _, gen := range hats {
 		gen()
@@ -830,5 +831,40 @@ func generateWizardBeard() [][]C {
 		{X, X, X, X, o, wdd, wd, w, wd, wdd, o, X, X, X, X},
 		{X, X, X, X, X, o, wdd, wd, wdd, o, X, X, X, X, X},
 		{X, X, X, X, X, X, o, o, o, X, X, X, X, X, X},
+	}
+}
+
+func generateZeusHair() [][]C {
+	o := O
+	// Majestic flowing white/silver god hair - mane style, flows DOWN
+	w := C{255, 255, 255, 255}   // pure white (outer highlights)
+	s := C{230, 230, 240, 255}   // silver (mid tones)
+	sd := C{200, 200, 215, 255}  // silver dark (inner shadows)
+	sdd := C{170, 170, 190, 255} // silver deeper (deepest shadow near face)
+
+	// Flowing mane - asymmetric, heavier on left, frames the face
+	// Dark inner edges (near face hole), bright outer edges
+	return [][]C{
+		// Top of head - gentle wave, not spiky
+		{X, X, X, X, o, o, o, o, o, o, o, o, o, X, X, X},
+		{X, X, o, o, w, w, s, s, s, s, w, w, o, o, X, X},
+		{X, o, w, s, s, sd, sd, sd, sd, sd, s, s, w, o, X, X},
+		// Hair flows down on sides - left side longer (asymmetry)
+		{o, w, s, sd, sdd, sdd, sdd, sdd, sdd, sdd, sd, s, w, o, X, X},
+		{o, w, s, sdd, sdd, sd, sd, sd, sd, sdd, sdd, sd, s, w, o, X},
+		{o, w, s, sdd, X, X, X, X, X, X, sdd, sd, s, w, o, X},
+		{o, w, sd, sdd, X, X, X, X, X, X, X, sdd, s, w, o, X},
+		// Left lock flows longer (asymmetric)
+		{o, s, sd, sdd, X, X, X, X, X, X, X, sdd, sd, s, o, X},
+		{o, s, sdd, X, X, X, X, X, X, X, X, X, sdd, s, o, X},
+		{o, sd, sdd, X, X, X, X, X, X, X, X, X, X, sd, o, X},
+		// Left side continues down, right side ends (asymmetry)
+		{o, sd, sdd, X, X, X, X, X, X, X, X, X, X, X, o, o},
+		{o, sdd, X, X, X, X, X, X, X, X, X, X, X, X, X, o},
+		{X, o, X, X, X, X, X, X, X, X, X, X, X, X, X, X},
+		// Beard wisps at bottom
+		{X, X, X, X, X, X, o, s, sd, s, o, X, X, X, X, X},
+		{X, X, X, X, X, X, o, sd, sdd, sd, o, X, X, X, X, X},
+		{X, X, X, X, X, X, X, o, sd, o, X, X, X, X, X, X},
 	}
 }

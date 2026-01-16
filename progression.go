@@ -37,6 +37,7 @@ var ItemRegistry = []Item{
 	{ID: "headphones", Name: "Headphones", Slot: SlotHat, MinLevel: 4},
 	{ID: "beret", Name: "Artist Beret", Slot: SlotHat, MinLevel: 6},
 	{ID: "tophat", Name: "Top Hat", Slot: SlotHat, MinLevel: 8},
+	{ID: "zeus", Name: "Zeus Hair", Slot: SlotHat, MinLevel: 10},
 	{ID: "catears", Name: "Cat Ears", Slot: SlotHat, MinLevel: 11},
 	{ID: "crown", Name: "Royal Crown", Slot: SlotHat, MinLevel: 14},
 	{ID: "propeller", Name: "Propeller Hat", Slot: SlotHat, MinLevel: 17},
