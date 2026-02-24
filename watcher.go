@@ -167,8 +167,12 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
-	encoded := strings.ReplaceAll(absPath, "/", "-")
-	claudeProjectDir := filepath.Join(os.Getenv("HOME"), ".claude", "projects", encoded)
+	encoded := encodePath(absPath)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	claudeProjectDir := filepath.Join(home, ".claude", "projects", encoded)
 	w.ProjectDir = claudeProjectDir
 
 	// Check if project directory exists
@@ -744,6 +748,16 @@ func detectThinkLevel(text string) ThinkLevel {
 // isThinkHard checks if user message requests extended thinking (any level)
 func isThinkHard(text string) bool {
 	return detectThinkLevel(text) != ThinkNone
+}
+
+// encodePath converts an absolute filesystem path to Claude Code's encoded folder name.
+// On Unix: /Users/foo/project -> -Users-foo-project
+// On Windows: C:\Users\foo\project -> C--Users-foo-project
+func encodePath(absPath string) string {
+	encoded := filepath.ToSlash(absPath)
+	encoded = strings.ReplaceAll(encoded, ":", "-")
+	encoded = strings.ReplaceAll(encoded, "/", "-")
+	return encoded
 }
 
 func truncate(s string, maxLen int) string {
