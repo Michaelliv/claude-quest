@@ -261,13 +261,17 @@ func (r *Renderer) drawQuestText(state *GameState) {
 
 	// Word wrap the text
 	maxLineWidth := panelWidth - padding*2 - 2
-	lines := wordWrap(state.QuestText, 6, maxLineWidth)
+	questFontSize := int32(6)
+	if r.hasGameFont {
+		questFontSize = 16 // neodgm native pixel size
+	}
+	lines := r.wordWrapText(state.QuestText, questFontSize, maxLineWidth)
 	if len(lines) > 3 {
 		lines = lines[:3] // Max 3 lines
 		lines[2] = lines[2] + "..."
 	}
 
-	lineHeight := int32(8)
+	lineHeight := int32(questFontSize + 2)
 	panelHeight := int32(len(lines))*lineHeight + padding*2
 
 	// Draw panel background
@@ -280,9 +284,9 @@ func (r *Renderer) drawQuestText(state *GameState) {
 		if i == 0 {
 			// First line with label
 			rl.DrawText(">", panelX+padding, y, 6, labelColor)
-			rl.DrawText(line, panelX+padding+8, y, 6, textColor)
+			r.drawText(line, panelX+padding+8, y, questFontSize, textColor)
 		} else {
-			rl.DrawText(line, panelX+padding+8, y, 6, textColor)
+			r.drawText(line, panelX+padding+8, y, questFontSize, textColor)
 		}
 	}
 }
@@ -314,22 +318,25 @@ func (r *Renderer) drawThoughtBubble(state *GameState) {
 	// Bubble dimensions - positioned above Claude
 	padding := int32(4)
 	fontSize := int32(5)
+	if r.hasGameFont {
+		fontSize = 16 // neodgm native pixel size
+	}
 	maxBubbleWidth := int32(180)
 
 	// Word wrap the text
-	lines := wordWrap(thoughtText, fontSize, maxBubbleWidth-padding*2)
+	lines := r.wordWrapText(thoughtText, fontSize, maxBubbleWidth-padding*2)
 	if len(lines) > 4 {
 		lines = lines[:4]
 		lines[3] = lines[3][:min(len(lines[3]), 20)] + "..."
 	}
 
-	lineHeight := int32(8) // More space between lines
+	lineHeight := int32(fontSize + 3)
 	bubbleHeight := int32(len(lines))*lineHeight + padding*2 + 2 // Extra vertical padding
 
 	// Calculate text width for bubble sizing
 	maxTextWidth := int32(0)
 	for _, line := range lines {
-		w := int32(rl.MeasureText(line, fontSize))
+		w := r.measureText(line, fontSize)
 		if w > maxTextWidth {
 			maxTextWidth = w
 		}
@@ -396,7 +403,7 @@ func (r *Renderer) drawThoughtBubble(state *GameState) {
 	// Draw text with better vertical centering
 	for i, line := range lines {
 		y := bubbleY + padding + 2 + int32(i)*lineHeight
-		rl.DrawText(line, bubbleX+padding+2, y, fontSize, textColor)
+		r.drawText(line, bubbleX+padding+2, y, fontSize, textColor)
 	}
 }
 
@@ -570,8 +577,25 @@ func (r *Renderer) drawFlowMeter(state *GameState) {
 	}
 }
 
-// wordWrap splits text into lines that fit within maxWidth
-func wordWrap(text string, fontSize int32, maxWidth int32) []string {
+// measureText measures text width using gameFont if available, otherwise default font
+func (r *Renderer) measureText(text string, fontSize int32) int32 {
+	if r.hasGameFont {
+		return int32(rl.MeasureTextEx(r.gameFont, text, float32(fontSize), 0).X)
+	}
+	return rl.MeasureText(text, fontSize)
+}
+
+// drawText draws text using gameFont if available, otherwise default font
+func (r *Renderer) drawText(text string, x, y, fontSize int32, color rl.Color) {
+	if r.hasGameFont {
+		rl.DrawTextEx(r.gameFont, text, rl.Vector2{X: float32(x), Y: float32(y)}, float32(fontSize), 0, color)
+	} else {
+		rl.DrawText(text, x, y, fontSize, color)
+	}
+}
+
+// wordWrapText splits text into lines that fit within maxWidth
+func (r *Renderer) wordWrapText(text string, fontSize int32, maxWidth int32) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return nil
@@ -587,7 +611,7 @@ func wordWrap(text string, fontSize int32, maxWidth int32) []string {
 		}
 		testLine += word
 
-		if rl.MeasureText(testLine, fontSize) <= maxWidth {
+		if r.measureText(testLine, fontSize) <= maxWidth {
 			currentLine = testLine
 		} else {
 			if currentLine != "" {

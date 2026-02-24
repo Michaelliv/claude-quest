@@ -84,6 +84,10 @@ type Renderer struct {
 	hasMiniSprites   bool
 	hasEnemySprites  bool
 
+	// Unicode font for Korean text (--korean flag)
+	gameFont    rl.Font
+	hasGameFont bool
+
 	// Treasure chest
 	chestTexture    rl.Texture2D
 	hasChestTexture bool
@@ -232,6 +236,26 @@ func NewRenderer(config *Config) *Renderer {
 		fmt.Println("Loaded chest sprite from:", chestPath)
 	}
 
+	// Load Korean font if --korean flag is set
+	if config.Korean {
+		fontPath := getAssetPath("fonts/neodgm.ttf")
+		if _, err := os.Stat(fontPath); err == nil {
+			codepoints := make([]rune, 0, 95+11172)
+			for c := rune(0x20); c <= 0x7E; c++ {
+				codepoints = append(codepoints, c)
+			}
+			for c := rune(0xAC00); c <= 0xD7A3; c++ {
+				codepoints = append(codepoints, c)
+			}
+			r.gameFont = rl.LoadFontEx(fontPath, 16, codepoints)
+			rl.SetTextureFilter(r.gameFont.Texture, rl.FilterPoint)
+			r.hasGameFont = true
+			fmt.Println("Loaded Korean font from:", fontPath)
+		} else {
+			fmt.Println("Warning: --korean flag set but font not found at:", fontPath)
+		}
+	}
+
 	// Load all accessories
 	r.loadHats()
 	r.loadFaces()
@@ -325,5 +349,8 @@ func (r *Renderer) Unload() {
 	}
 	if r.spriteSheet.ID != 0 {
 		rl.UnloadTexture(r.spriteSheet)
+	}
+	if r.hasGameFont {
+		rl.UnloadFont(r.gameFont)
 	}
 }

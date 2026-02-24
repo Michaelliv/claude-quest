@@ -1167,6 +1167,18 @@ func main() {
 	// Parse command line arguments
 	args := os.Args[1:]
 
+	// Extract --korean flag
+	koreanMode := false
+	filteredArgs := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--korean" {
+			koreanMode = true
+		} else {
+			filteredArgs = append(filteredArgs, arg)
+		}
+	}
+	args = filteredArgs
+
 	if len(args) == 0 {
 		// Default: watch current directory
 		cwd, _ := os.Getwd()
@@ -1261,6 +1273,7 @@ func main() {
 
 	// Initialize game systems
 	config := LoadConfig("config.json")
+	config.Korean = koreanMode
 	renderer := NewRenderer(config)
 	animations := NewAnimationSystem()
 	gameState := NewGameState()
