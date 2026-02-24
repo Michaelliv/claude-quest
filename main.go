@@ -919,7 +919,7 @@ func runDoctor() {
 
 	cwd, _ := os.Getwd()
 	absPath, _ := filepath.Abs(cwd)
-	encoded := strings.ReplaceAll(absPath, "/", "-")
+	encoded := encodeProjectPath(absPath)
 	projectDir := filepath.Join(projectsDir, encoded)
 
 	fmt.Printf("  Path: %s\n", cwd)
