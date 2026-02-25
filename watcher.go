@@ -747,9 +747,11 @@ func isThinkHard(text string) bool {
 }
 
 // encodeProjectPath converts an absolute path to Claude's project directory name format.
-// Claude Code replaces /, ., and spaces with - when naming project directories.
+// Claude Code replaces /, \, :, ., and spaces with - when naming project directories.
 func encodeProjectPath(absPath string) string {
-	encoded := strings.ReplaceAll(absPath, "/", "-")
+	encoded := strings.ReplaceAll(absPath, "\\", "-")
+	encoded = strings.ReplaceAll(encoded, ":", "-")
+	encoded = strings.ReplaceAll(encoded, "/", "-")
 	encoded = strings.ReplaceAll(encoded, ".", "-")
 	encoded = strings.ReplaceAll(encoded, " ", "-")
 	return encoded
