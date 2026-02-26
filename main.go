@@ -882,26 +882,30 @@ func runDoctor() {
 	fmt.Println()
 
 	allGood := true
-	home, err := os.UserHomeDir()
+	home, _ := os.UserHomeDir()
+	claudeDir, err := claudeConfigDir()
 	if err != nil {
-		fmt.Println("  [!!] Could not determine home directory")
+		fmt.Println("  [!!] Could not determine Claude config directory")
 		return
 	}
 
 	// Check Claude Code installation
 	fmt.Println("Claude Code:")
 
-	claudeDir := filepath.Join(home, ".claude")
+	if envDir := os.Getenv("CLAUDE_CONFIG_DIR"); envDir != "" {
+		fmt.Printf("  [OK] Using CLAUDE_CONFIG_DIR: %s\n", envDir)
+	}
+
 	if _, err := os.Stat(claudeDir); err == nil {
-		fmt.Println("  [OK] ~/.claude/ exists")
+		fmt.Printf("  [OK] %s exists\n", claudeDir)
 	} else {
-		fmt.Println("  [!!] ~/.claude/ not found - is Claude Code installed?")
+		fmt.Printf("  [!!] %s not found - is Claude Code installed?\n", claudeDir)
 		allGood = false
 	}
 
-	projectsDir := filepath.Join(home, ".claude", "projects")
+	projectsDir := filepath.Join(claudeDir, "projects")
 	if _, err := os.Stat(projectsDir); err == nil {
-		fmt.Println("  [OK] ~/.claude/projects/ exists")
+		fmt.Printf("  [OK] %s exists\n", projectsDir)
 
 		// Count project directories
 		entries, _ := os.ReadDir(projectsDir)
@@ -913,7 +917,7 @@ func runDoctor() {
 		}
 		fmt.Printf("  [OK] Found %d project(s)\n", projectCount)
 	} else {
-		fmt.Println("  [!!] ~/.claude/projects/ not found")
+		fmt.Printf("  [!!] %s not found\n", projectsDir)
 		allGood = false
 	}
 

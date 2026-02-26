@@ -168,11 +168,11 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	}
 
 	encoded := encodeProjectPath(absPath)
-	home, err := os.UserHomeDir()
+	configDir, err := claudeConfigDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to get Claude config directory: %w", err)
 	}
-	claudeProjectDir := filepath.Join(home, ".claude", "projects", encoded)
+	claudeProjectDir := filepath.Join(configDir, "projects", encoded)
 	w.ProjectDir = claudeProjectDir
 
 	// Check if project directory exists
@@ -748,6 +748,19 @@ func detectThinkLevel(text string) ThinkLevel {
 // isThinkHard checks if user message requests extended thinking (any level)
 func isThinkHard(text string) bool {
 	return detectThinkLevel(text) != ThinkNone
+}
+
+// claudeConfigDir returns the Claude Code configuration directory.
+// Uses CLAUDE_CONFIG_DIR env var if set, otherwise falls back to ~/.claude.
+func claudeConfigDir() (string, error) {
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".claude"), nil
 }
 
 // encodeProjectPath converts an absolute path to Claude's project directory name format.
