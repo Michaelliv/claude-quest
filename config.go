@@ -23,6 +23,9 @@ type Config struct {
 
 	// Theme/background
 	Background string `json:"background"`
+
+	// Language support
+	Korean bool `json:"-"` // --korean flag, not persisted
 }
 
 // DefaultConfig returns a config with sensible defaults
