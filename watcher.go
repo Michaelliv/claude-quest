@@ -168,7 +168,11 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	}
 
 	encoded := encodeProjectPath(absPath)
-	claudeProjectDir := filepath.Join(os.Getenv("HOME"), ".claude", "projects", encoded)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	claudeProjectDir := filepath.Join(home, ".claude", "projects", encoded)
 	w.ProjectDir = claudeProjectDir
 
 	// Check if project directory exists
