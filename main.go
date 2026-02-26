@@ -882,7 +882,11 @@ func runDoctor() {
 	fmt.Println()
 
 	allGood := true
-	home := os.Getenv("HOME")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("  [!!] Could not determine home directory")
+		return
+	}
 
 	// Check Claude Code installation
 	fmt.Println("Claude Code:")
