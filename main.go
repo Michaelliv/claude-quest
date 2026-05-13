@@ -928,7 +928,7 @@ func runDoctor() {
 	cwd, _ := os.Getwd()
 	absPath, _ := filepath.Abs(cwd)
 	encoded := encodeProjectPath(absPath)
-	projectDir := filepath.Join(projectsDir, encoded)
+	projectDir := resolveProjectDir(projectsDir, encoded)
 
 	fmt.Printf("  Path: %s\n", cwd)
 	fmt.Printf("  Encoded: %s\n", encoded)

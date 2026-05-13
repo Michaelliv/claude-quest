@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -172,7 +173,7 @@ func (w *Watcher) FindProjectConversation(projectDir string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get Claude config directory: %w", err)
 	}
-	claudeProjectDir := filepath.Join(configDir, "projects", encoded)
+	claudeProjectDir := resolveProjectDir(filepath.Join(configDir, "projects"), encoded)
 	w.ProjectDir = claudeProjectDir
 
 	// Check if project directory exists
@@ -763,15 +764,87 @@ func claudeConfigDir() (string, error) {
 	return filepath.Join(home, ".claude"), nil
 }
 
-// encodeProjectPath converts an absolute path to Claude's project directory name format.
-// Claude Code replaces /, \, :, ., and spaces with - when naming project directories.
+// encodeProjectPath converts an absolute path to Claude's project directory
+// name. Mirrors Claude Code's `pM` function: every char outside [a-zA-Z0-9]
+// becomes '-', and results longer than 200 chars are truncated and suffixed
+// with a base36 hash of the original path so distinct long paths never
+// collide. Case is preserved, so two invocations whose cwd differs only in
+// drive-letter casing produce different folder names — callers should pair
+// this with resolveProjectDir for case-insensitive disk lookup.
 func encodeProjectPath(absPath string) string {
-	encoded := strings.ReplaceAll(absPath, "\\", "-")
-	encoded = strings.ReplaceAll(encoded, ":", "-")
-	encoded = strings.ReplaceAll(encoded, "/", "-")
-	encoded = strings.ReplaceAll(encoded, ".", "-")
-	encoded = strings.ReplaceAll(encoded, " ", "-")
-	return encoded
+	var b strings.Builder
+	b.Grow(len(absPath))
+	for _, r := range absPath {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		// Match JS String.replace(/[^a-zA-Z0-9]/g, "-") behavior: each UTF-16
+		// code unit becomes one '-'. BMP runes are one code unit; non-BMP
+		// (e.g. emoji) are surrogate pairs and produce two dashes.
+		if r > 0xFFFF {
+			b.WriteString("--")
+		} else {
+			b.WriteByte('-')
+		}
+	}
+	encoded := b.String()
+	if len(encoded) <= projectPathMaxLen {
+		return encoded
+	}
+	return encoded[:projectPathMaxLen] + "-" + projectPathHashSuffix(absPath)
+}
+
+const projectPathMaxLen = 200
+
+// projectPathHashSuffix replicates Claude Code's hash: a 32-bit signed
+// djb2-style accumulator over UTF-16 code units, then Math.abs(...).toString(36).
+func projectPathHashSuffix(s string) string {
+	var h int32
+	for _, r := range s {
+		if r > 0xFFFF {
+			// JS iterates UTF-16 code units, so a non-BMP rune contributes
+			// its surrogate pair, not the raw code point.
+			r -= 0x10000
+			high := int32(0xD800 + (r >> 10))
+			low := int32(0xDC00 + (r & 0x3FF))
+			h = (h<<5 - h + high) | 0
+			h = (h<<5 - h + low) | 0
+			continue
+		}
+		h = (h<<5 - h + int32(r)) | 0
+	}
+	abs := int64(h)
+	if abs < 0 {
+		abs = -abs
+	}
+	return strconv.FormatInt(abs, 36)
+}
+
+// resolveProjectDir returns the actual on-disk path for a project's Claude
+// conversation directory. It first tries the exact encoded name, then falls
+// back to a case-insensitive match against siblings under projectsRoot.
+//
+// The fallback handles Windows, where filepath.Abs may return the drive letter
+// in a different case than the one recorded when Claude Code originally created
+// the project folder (e.g. PowerShell yields "C:\..." while a VSCode-launched
+// session may have produced "c--..."). Returns the exact (possibly non-existent)
+// path if no match is found, so callers can still surface a useful error.
+func resolveProjectDir(projectsRoot, encoded string) string {
+	exact := filepath.Join(projectsRoot, encoded)
+	if _, err := os.Stat(exact); err == nil {
+		return exact
+	}
+	entries, err := os.ReadDir(projectsRoot)
+	if err != nil {
+		return exact
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.EqualFold(e.Name(), encoded) {
+			return filepath.Join(projectsRoot, e.Name())
+		}
+	}
+	return exact
 }
 
 func truncate(s string, maxLen int) string {
