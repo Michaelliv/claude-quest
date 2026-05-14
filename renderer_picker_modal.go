@@ -64,7 +64,19 @@ func (r *Renderer) IsModalPickerOpen() bool {
 	return r.pickerModal
 }
 
-// syncItemIndices sets the picker item indices to match current equipped items
+// syncItemIndices sets the picker item indices to match current equipped items.
+//
+// The picker UI builds its slot lists from owned items that are ALSO present
+// in the renderer's `names` array (i.e. whose texture/swatch was successfully
+// loaded). cycleSlotItem and getSlotItemInfo both apply this "in names" filter
+// when constructing their lists, and pickerItemIndex addresses into those
+// lists. syncItemIndices must apply the same filter when counting, otherwise
+// an owned-but-unloaded item (e.g. an accessory whose PNG is missing from a
+// packaged npm asset bundle) shifts every following position by one — which
+// for the last item in ItemRegistry causes the index to go out of bounds,
+// and getSlotItemInfo silently falls back to slot 0 ("none"). Symptom: after
+// equipping the highest-level item and closing/reopening the picker, the
+// slot displays as empty.
 func (r *Renderer) syncItemIndices() {
 	slotTypes := []ItemSlot{SlotHat, SlotFace, SlotAura, SlotTrail}
 	currentIdxs := []int{r.currentHat, r.currentFace, r.currentAura, r.currentTrail}
@@ -80,24 +92,36 @@ func (r *Renderer) syncItemIndices() {
 			currentID = names[currentIdx]
 		}
 
-		pos := 0
 		if currentID == "" {
 			r.pickerItemIndex[slot] = 0
 			continue
 		}
 
+		nameSet := make(map[string]struct{}, len(names))
+		for _, n := range names {
+			nameSet[n] = struct{}{}
+		}
+
+		pos := 0
 		idx := 1 // Start after "none"
 		for _, item := range ItemRegistry {
-			if item.Slot == slotType {
-				isOwned := r.profile != nil && r.profile.IsOwned(item.ID)
-				if isOwned {
-					if item.ID == currentID {
-						pos = idx
-						break
-					}
-					idx++
-				}
+			if item.Slot != slotType {
+				continue
 			}
+			if r.profile != nil && !r.profile.IsOwned(item.ID) {
+				continue
+			}
+			if _, loaded := nameSet[item.ID]; !loaded {
+				// Same filter as cycleSlotItem / getSlotItemInfo: skip items
+				// whose texture isn't available, so position counting stays
+				// aligned across all three call sites.
+				continue
+			}
+			if item.ID == currentID {
+				pos = idx
+				break
+			}
+			idx++
 		}
 		r.pickerItemIndex[slot] = pos
 	}
