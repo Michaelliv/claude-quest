@@ -95,6 +95,7 @@ cq                    # Watch current project
 cq watch ~/dir        # Watch specific project
 cq replay <file.jsonl> # Replay an existing conversation
 cq doctor             # Check if Claude Quest can run properly
+cq codex-watch ~/dir  # Watch local-only Codex activity for an allowlisted project
 ```
 
 **Controls:** Press `Tab` to open the accessory picker. Use `←→` to switch between slots (Hat/Face/Aura/Trail), `↑↓` to cycle items. Press `Tab` or `Esc` to close.
@@ -104,6 +105,39 @@ cq doctor             # Check if Claude Quest can run properly
 ## How It Works
 
 Reads Claude Code's local conversation logs (JSONL files). No API keys. No network calls. Just file watching.
+
+### Codex local provider
+
+Codex activity is opt-in and stays on the local computer. It has no network client, never reads `~/.codex/auth.json` or credential stores, and never retains prompts, commands, file contents, tool payloads, outputs, or transcript paths.
+
+Create `~/.claude-quest/codex-provider.json` with an explicit project allowlist. Keep it disabled until the Hook is reviewed and trusted.
+
+```json
+{
+  "enabled": false,
+  "kill_switch": false,
+  "allowed_projects": ["/absolute/path/to/approved-repository"],
+  "retention_days": 14,
+  "max_bytes": 26214400
+}
+```
+
+For each allowlisted repository, add this project-local Hook definition to `.codex/hooks.json`, then review and trust it through Codex's Hook interface:
+
+```json
+{
+  "description": "Local Claude Quest Codex activity collector",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "cq codex-hook"}]}],
+    "PostToolUse": [{"matcher": "apply_patch|Edit|Write|Bash", "hooks": [{"type": "command", "command": "cq codex-hook"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "cq codex-hook"}]}]
+  }
+}
+```
+
+Set `enabled` to `true` only after the allowlist is correct, then run `cq codex-watch /absolute/path/to/approved-repository`. Set `kill_switch` to `true` for immediate local collection stop. Events are written only to `~/.claude-quest/codex-provider/` with owner-only access, rotate after 14 days or 25 MiB, and earn outcome-based XP (file changes, tests, commits, PRs, and merges) rather than token totals.
+
+When Hooks are unavailable, the provider deliberately fails closed: only pre-sanitized normalized records are accepted from a read-only JSONL fallback. Native Codex transcript formats are not treated as a stable API, preventing prompts or command content from being collected accidentally.
 
 ---
 

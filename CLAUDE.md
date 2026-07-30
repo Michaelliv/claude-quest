@@ -39,6 +39,8 @@ Claude Quest is a pixel-art RPG companion that visualizes Claude Code operations
 
 **watcher.go** - File watcher that monitors `~/.claude/projects/[encoded-path]/*.jsonl`. Parses JSON lines, extracts tool usage events, and emits typed `Event` structs through a channel. Supports live tailing and replay modes.
 
+**provider.go / codex_provider.go** - Default-deny local Codex provider. `NormalizedEvent` excludes source content and credentials; `CodexAdapter` maps safe events to the existing animation contract. The Hook path writes owner-only local JSONL spool records and the fallback accepts only pre-sanitized normalized JSONL records.
+
 **animations.go** - State machine managing 10 animation types: Idle, Enter, Casting, Attack, Writing, Victory, Hurt, Thinking, Walk, VictoryPose. Each animation has frame timing and transition rules. Always in "Quest mode" - walks when active, idles when nothing happening.
 
 ### Renderer Architecture (Split into modules)
@@ -93,6 +95,9 @@ Biomes cycle every 20 seconds. Each biome draws elements at different scroll spe
 | extended thinking | Thinking + particles |
 | Task (subagent) | Mini Claude spawns and jumps out |
 | git push | SHIPPED! rainbow banner |
+| Codex file change | Writing |
+| Codex test passed / failed | Victory / Hurt |
+| Codex commit / PR / merge | Victory / SHIPPED! |
 
 ### Sprite Generation
 
