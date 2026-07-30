@@ -432,7 +432,6 @@ func generateWand() *image.RGBA {
 	wood := color.RGBA{120, 80, 50, 255}
 	woodDark := color.RGBA{80, 50, 30, 255}
 	star := SparkYellow
-	o := Outline
 
 	// Star tip
 	img.Set(2, 0, star)
@@ -458,7 +457,6 @@ func generateSword() *image.RGBA {
 	bladeBright := color.RGBA{240, 240, 250, 255}
 	hilt := color.RGBA{160, 140, 60, 255}
 	grip := color.RGBA{80, 50, 30, 255}
-	o := Outline
 
 	// Blade tip
 	img.Set(2, 0, bladeBright)
