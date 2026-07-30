@@ -18,17 +18,17 @@ type EventType int
 const (
 	EventSystemInit EventType = iota
 	EventThinking
-	EventReading    // Glob, Read, Grep, WebFetch, WebSearch
-	EventBash       // Bash tool
-	EventWriting    // Edit, Write, NotebookEdit
-	EventSuccess    // Successful result
-	EventError      // Error result
-	EventIdle       // No activity
+	EventReading // Glob, Read, Grep, WebFetch, WebSearch
+	EventBash    // Bash tool
+	EventWriting // Edit, Write, NotebookEdit
+	EventSuccess // Successful result
+	EventError   // Error result
+	EventIdle    // No activity
 
 	// New event types
-	EventQuest      // User prompt (quest text)
-	EventCompact    // Conversation compacted (sleep/rest)
-	EventThinkHard  // Extended thinking requested
+	EventQuest         // User prompt (quest text)
+	EventCompact       // Conversation compacted (sleep/rest)
+	EventThinkHard     // Extended thinking requested
 	EventSpawnAgent    // Task tool spawned an agent
 	EventAgentComplete // Task tool completed (agent should poof)
 	EventTodoUpdate    // TodoWrite tool used
@@ -66,18 +66,20 @@ type CompactInfo struct {
 
 // Event represents a parsed Claude Code event
 type Event struct {
-	Type    EventType
-	Details string
+	Type     EventType
+	Details  string
+	Provider Provider
+	XPDelta  int
 
 	// Extended data for game mechanics
-	TokenUsage   *TokenUsage  // For mana bar
-	TodoItems    []TodoItem   // For todo display
-	CompactInfo  *CompactInfo // For compact/sleep
-	ToolName     string       // Original tool name
-	ToolUseID    string       // Tool use ID (for tracking Task completions)
-	IsError      bool         // Whether this was an error
-	ThinkLevel   ThinkLevel   // For think hard effects
-	ThoughtText  string       // Claude's thinking content (for thought bubble)
+	TokenUsage  *TokenUsage  // For mana bar
+	TodoItems   []TodoItem   // For todo display
+	CompactInfo *CompactInfo // For compact/sleep
+	ToolName    string       // Original tool name
+	ToolUseID   string       // Tool use ID (for tracking Task completions)
+	IsError     bool         // Whether this was an error
+	ThinkLevel  ThinkLevel   // For think hard effects
+	ThoughtText string       // Claude's thinking content (for thought bubble)
 }
 
 // ClaudeMessage represents the structure of Claude Code JSONL format
@@ -93,8 +95,8 @@ type ClaudeMessage struct {
 
 	// Message content
 	Message struct {
-		Role    string `json:"role"`
-		Model   string `json:"model,omitempty"`
+		Role    string          `json:"role"`
+		Model   string          `json:"model,omitempty"`
 		Content json.RawMessage `json:"content"` // Can be string or array
 		Usage   *TokenUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
@@ -103,13 +105,13 @@ type ClaudeMessage struct {
 // ContentItem represents a single content item in message.content array
 type ContentItem struct {
 	Type      string          `json:"type"`
-	ID        string          `json:"id,omitempty"`         // For tool_use - the tool use ID
+	ID        string          `json:"id,omitempty"` // For tool_use - the tool use ID
 	Name      string          `json:"name,omitempty"`
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
-	Content   json.RawMessage `json:"content,omitempty"` // For tool_result (can be string or array)
+	Content   json.RawMessage `json:"content,omitempty"`     // For tool_result (can be string or array)
 	ToolUseID string          `json:"tool_use_id,omitempty"` // For tool_result - reference to tool_use ID
 }
 
@@ -716,11 +718,11 @@ func (w *Watcher) parseToolUse(item ContentItem) *Event {
 type ThinkLevel int
 
 const (
-	ThinkNone    ThinkLevel = iota
-	ThinkNormal             // "think"
-	ThinkHard               // "think hard"
-	ThinkHarder             // "think harder"
-	ThinkUltra              // "ultrathink"
+	ThinkNone   ThinkLevel = iota
+	ThinkNormal            // "think"
+	ThinkHard              // "think hard"
+	ThinkHarder            // "think harder"
+	ThinkUltra             // "ultrathink"
 )
 
 // detectThinkLevel checks user message for thinking intensity

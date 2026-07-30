@@ -137,6 +137,8 @@ type GameState struct {
 
 	// Floating XP indicators
 	FloatingXPs []FloatingXP
+	ClaudeXP int
+	CodexXP int
 }
 
 // NewGameState creates a new game state
@@ -618,6 +620,14 @@ const (
 
 // HandleEvent updates game state based on events
 func (g *GameState) HandleEvent(event Event) {
+	if g.Profile != nil && event.Provider == ProviderCodex && event.XPDelta != 0 {
+		if event.XPDelta > 0 {
+			g.Profile.AddXP(event.XPDelta)
+			g.SpawnFloatingXP(event.XPDelta)
+			g.CodexXP += event.XPDelta
+		}
+		g.Profile.Save()
+	}
 	// Mark activity for any real event (not idle)
 	if event.Type != EventIdle {
 		g.LastActivityTime = 0
@@ -651,7 +661,7 @@ func (g *GameState) HandleEvent(event Event) {
 	}
 
 	// Track progression based on event type
-	if g.Profile != nil {
+	if g.Profile != nil && event.Provider != ProviderCodex {
 		leveledUp := false
 
 		switch event.Type {
@@ -861,6 +871,8 @@ Usage:
   cq                    Watch the current directory's latest conversation
   cq watch [dir]        Watch a specific directory's conversation
   cq replay <file>      Replay an existing conversation JSONL file
+  cq codex-hook         Accept one local, sanitized Codex Hook event on stdin
+  cq codex-watch [dir]  Watch local Codex provider events for an allowlisted project
   cq studio             Studio mode - asset dev environment (requires -tags debug build)
   cq doctor             Check if Claude Quest can run properly
 
@@ -872,7 +884,45 @@ Examples:
   cq                                    # Watch current project
   cq watch ~/Projects/myapp             # Watch specific project
   cq replay ~/.claude/projects/-Users-me-Projects-myapp/abc123.jsonl
+  cq codex-watch ~/Projects/myapp     # Requires local allowlist + enabled provider
   go build -tags debug && ./cq studio   # Studio mode for asset development`)
+}
+
+func startCodexWatch(watcher *Watcher, project string) error {
+	config, err := LoadCodexProviderConfig()
+	if err != nil {
+		return fmt.Errorf("load Codex provider config: %w", err)
+	}
+	if !IsAllowedProject(config, project) {
+		return fmt.Errorf("Codex provider is disabled, stopped, or project is not allowlisted")
+	}
+	spool := NewCodexSpool(config)
+	if err := spool.Ensure(); err != nil {
+		return fmt.Errorf("prepare local Codex event spool: %w", err)
+	}
+	projectID := opaqueID(mustCanonicalProjectPath(project))
+	codexWatcher := NewCodexSessionWatcher(spool.CurrentPath())
+	if err := codexWatcher.Start(); err != nil {
+		return fmt.Errorf("start local Codex event watcher: %w", err)
+	}
+	watcher.FilePath = spool.CurrentPath()
+	go func() {
+		adapter := CodexAdapter{}
+		for event := range codexWatcher.Events {
+			if event.ProjectID == projectID {
+				watcher.Events <- adapter.ToEvent(event)
+			}
+		}
+	}()
+	return nil
+}
+
+func runCodexHookCommand() error {
+	config, err := LoadCodexProviderConfig()
+	if err != nil {
+		return fmt.Errorf("load Codex provider config: %w", err)
+	}
+	return ProcessCodexHook(os.Stdin, config, NewCodexSpool(config))
 }
 
 // runDoctor checks if all requirements for Claude Quest are met
@@ -1247,6 +1297,20 @@ func main() {
 			}
 
 			err = watcher.StartReplay(filePath)
+
+		case "codex-hook":
+			if err := runCodexHookCommand(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+
+		case "codex-watch":
+			dir := "."
+			if len(args) > 1 {
+				dir = args[1]
+			}
+			err = startCodexWatch(watcher, dir)
 
 		default:
 			// Assume it's a directory path for watching

@@ -17,6 +17,7 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 
 	// Draw XP bar (above mana bar)
 	r.drawXPBar(state)
+	r.drawProviderXP(state)
 
 	// Draw flow meter (right side)
 	r.drawFlowMeter(state)
@@ -55,6 +56,11 @@ func (r *Renderer) DrawGameUI(state *GameState) {
 	if state.CompactActive {
 		r.drawCompactEffect(state)
 	}
+}
+
+func (r *Renderer) drawProviderXP(state *GameState) {
+	text := fmt.Sprintf("C:%d X:%d", state.ClaudeXP, state.CodexXP)
+	rl.DrawText(text, 4, 27, 6, rl.Color{R: 180, G: 175, B: 200, A: 255})
 }
 
 // drawThrownTools renders tool names flying through the air
